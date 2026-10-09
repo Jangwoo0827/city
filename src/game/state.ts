@@ -52,6 +52,7 @@ export class GameState {
   speed = 1;
   gameOver = false;
   happiness = 50;
+  happinessTarget = 50;
   stats: Stats = emptyStats();
   milestones = new Set<number>();
   /** 공업 오염도 (타일별 0..1+) */
@@ -90,6 +91,7 @@ export class GameState {
     this.speed = 1;
     this.gameOver = false;
     this.happiness = 50;
+    this.happinessTarget = 50;
     this.stats = emptyStats();
     this.milestones.clear();
     this.pollution.fill(0);

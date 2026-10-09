@@ -12,6 +12,7 @@ export class GameView {
   readonly rig = new CameraRig();
   readonly overlay = new Overlay();
   readonly city: CityMeshes;
+  private readonly selection: THREE.LineLoop;
 
   readonly sun = new THREE.DirectionalLight(0xffffff, 2.2);
   readonly ambient = new THREE.HemisphereLight(0xcfe8ff, 0x8aa070, 0.9);
@@ -31,7 +32,8 @@ export class GameView {
     this.setupLights();
     this.setupGround();
     this.city = new CityMeshes(state);
-    this.scene.add(this.city.group, this.overlay.mesh);
+    this.selection = this.createSelectionMarker();
+    this.scene.add(this.city.group, this.overlay.mesh, this.selection);
 
     window.addEventListener('resize', () => this.resize());
     this.resize();
@@ -90,6 +92,29 @@ export class GameView {
     );
     lines.name = 'gridlines';
     this.scene.add(lines);
+  }
+
+  private createSelectionMarker(): THREE.LineLoop {
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(1, 0, 0),
+      new THREE.Vector3(1, 0, 1),
+      new THREE.Vector3(0, 0, 1),
+    ]);
+    const line = new THREE.LineLoop(geo, new THREE.LineBasicMaterial({ color: 0xffe066 }));
+    line.visible = false;
+    line.renderOrder = 11;
+    line.material.depthTest = false;
+    return line;
+  }
+
+  /** 선택된 타일/건물 영역에 노란 테두리 표시 */
+  setSelection(fp: { x: number; y: number; w: number; h: number } | null): void {
+    this.selection.visible = fp !== null;
+    if (fp) {
+      this.selection.position.set(fp.x, 0.12, fp.y);
+      this.selection.scale.set(fp.w, 1, fp.h);
+    }
   }
 
   resize(): void {

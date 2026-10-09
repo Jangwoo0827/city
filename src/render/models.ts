@@ -1,0 +1,165 @@
+import * as THREE from 'three';
+import { K } from '../world/grid';
+import { box, boxOnGround, cylinder, merge, pyramidRoof, windowQuad } from './geometry';
+
+export interface BuildingModel {
+  body: THREE.BufferGeometry;
+  /** 밤에 불이 켜지는 창 (없을 수 있음) */
+  windows: THREE.BufferGeometry | null;
+}
+
+const WIN_OUT = 0.004;
+
+/**
+ * 직육면체 벽면 4면에 창 격자를 만든다.
+ * rows × cols 개의 작은 사각형을 벽에서 살짝 띄워 배치.
+ */
+function facadeWindows(
+  out: THREE.BufferGeometry[],
+  w: number,
+  d: number,
+  baseY: number,
+  rowYs: number[],
+  cols: number,
+  winW: number,
+  winH: number,
+  ox = 0,
+  oz = 0,
+): void {
+  for (let side = 0; side < 4; side++) {
+    const alongX = side % 2 === 0;
+    const span = alongX ? w : d;
+    const off = (alongX ? d : w) / 2 + WIN_OUT;
+    for (const ry of rowYs) {
+      for (let c = 0; c < cols; c++) {
+        const u = ((c + 0.5) / cols - 0.5) * span * 0.78;
+        const y = baseY + ry;
+        let x = 0;
+        let z = 0;
+        if (side === 0) {
+          x = u;
+          z = off;
+        } else if (side === 1) {
+          x = off;
+          z = u;
+        } else if (side === 2) {
+          x = u;
+          z = -off;
+        } else {
+          x = -off;
+          z = u;
+        }
+        out.push(windowQuad(winW, winH, x + ox, y, z + oz, side));
+      }
+    }
+  }
+}
+
+// ── 주거: 낮고 지붕이 있는 집 ─────────────────────────────
+const RES_WALL = [0, 0xd4e9b8, 0xa8d88f, 0x78c077];
+const RES_ROOF = [0, 0xc8603f, 0xb4503a, 0x9c4332];
+
+function residential(level: number): BuildingModel {
+  const dims = [
+    [0, 0, 0, 0],
+    [0.5, 0.46, 0.34, 0.22],
+    [0.58, 0.52, 0.52, 0.26],
+    [0.66, 0.6, 0.8, 0.3],
+  ][level];
+  const [w, d, h, roofH] = dims;
+  const parts: THREE.BufferGeometry[] = [];
+  parts.push(boxOnGround(w, h, d, 0, 0, 0, RES_WALL[level]));
+  parts.push(pyramidRoof(w * 1.12, d * 1.12, roofH, 0, h, 0, RES_ROOF[level]));
+  // 문 + 굴뚝
+  parts.push(boxOnGround(0.1, 0.16, 0.02, 0, 0, d / 2 + 0.005, 0x7a5a3a));
+  if (level >= 2) parts.push(boxOnGround(0.07, 0.2, 0.07, w * 0.25, h + roofH * 0.35, -d * 0.2, 0x8a6a58));
+  if (level === 3) parts.push(boxOnGround(0.3, 0.26, 0.24, w / 2 + 0.1, 0, 0.1, RES_WALL[2]));
+  const rows = level === 1 ? [h * 0.55] : level === 2 ? [0.15, 0.36] : [0.15, 0.36, 0.58];
+  const win: THREE.BufferGeometry[] = [];
+  facadeWindows(win, w, d, 0, rows, 2, 0.1, 0.1);
+  return { body: merge(parts), windows: merge(win) };
+}
+
+// ── 상업: 중간 높이 유리 건물 ─────────────────────────────
+const COM_WALL = [0, 0xb7d4f4, 0x7fb0ea, 0x4d8bd8];
+const COM_H = [0, 0.78, 1.25, 1.95];
+
+function commercial(level: number): BuildingModel {
+  const w = [0, 0.68, 0.7, 0.72][level];
+  const h = COM_H[level];
+  const parts: THREE.BufferGeometry[] = [];
+  parts.push(boxOnGround(w, h, w, 0, 0, 0, COM_WALL[level]));
+  parts.push(boxOnGround(w + 0.04, 0.05, w + 0.04, 0, h, 0, 0x5c6b7d));
+  parts.push(boxOnGround(0.22, 0.12, 0.22, 0.15, h + 0.05, -0.12, 0x8794a6));
+  if (level === 3) {
+    parts.push(cylinder(0.015, 0.4, -0.18, h + 0.05, 0.15, 0xc9d1dc, 6));
+    parts.push(boxOnGround(w + 0.1, 0.12, w + 0.1, 0, 0, 0, 0x6c7a8c)); // 저층 기단
+  }
+  const rowCount = [0, 3, 5, 8][level];
+  const rows: number[] = [];
+  for (let r = 0; r < rowCount; r++) rows.push(0.2 + r * ((h - 0.32) / Math.max(1, rowCount - 1)));
+  const win: THREE.BufferGeometry[] = [];
+  facadeWindows(win, w, w, 0, rows, 3, 0.13, 0.1);
+  return { body: merge(parts), windows: merge(win) };
+}
+
+// ── 공업: 굴뚝 달린 낮은 박스 ─────────────────────────────
+const IND_WALL = [0, 0xeadf9c, 0xe0c65a, 0xcfa62e];
+const IND_H = [0, 0.34, 0.48, 0.62];
+
+function industrial(level: number): BuildingModel {
+  const w = [0, 0.74, 0.8, 0.84][level];
+  const d = [0, 0.68, 0.72, 0.78][level];
+  const h = IND_H[level];
+  const parts: THREE.BufferGeometry[] = [];
+  parts.push(boxOnGround(w, h, d, 0, 0, 0, IND_WALL[level]));
+  parts.push(boxOnGround(w + 0.03, 0.04, d + 0.03, 0, h, 0, 0x6f6a5c));
+  const chimneys: [number, number, number][] =
+    level === 1 ? [[0.24, -0.18, 0.34]] : level === 2 ? [[0.26, -0.2, 0.42], [0.1, -0.22, 0.34]] : [[0.3, -0.22, 0.52], [0.14, -0.24, 0.42], [-0.02, -0.24, 0.34]];
+  for (const [cx, cz, ch] of chimneys) {
+    parts.push(cylinder(0.06, ch, cx, h, cz, 0x8a8a8a, 8, 0.045));
+    parts.push(cylinder(0.065, 0.04, cx, h + ch, cz, 0x4a4a4a, 8));
+  }
+  if (level >= 2) parts.push(boxOnGround(0.3, 0.26, 0.3, -w * 0.22, h + 0.04, d * 0.15, 0xb9b095));
+  if (level === 3) parts.push(boxOnGround(0.22, 0.4, 0.22, -w * 0.3, h + 0.04, -d * 0.2, 0xa89f84));
+  const rows = level === 1 ? [h * 0.5] : [h * 0.35, h * 0.7];
+  const win: THREE.BufferGeometry[] = [];
+  facadeWindows(win, w, d, 0, rows, 3, 0.12, 0.07);
+  return { body: merge(parts), windows: merge(win) };
+}
+
+/** 2x2 발전소 (원점 = 발전소 중심) */
+function plant(): BuildingModel {
+  const parts: THREE.BufferGeometry[] = [];
+  parts.push(box(1.86, 0.08, 1.86, 0, 0.04, 0, 0x8d949c));
+  parts.push(boxOnGround(1.0, 0.62, 0.7, -0.45, 0.08, -0.5, 0xc7ccd3));
+  parts.push(boxOnGround(1.04, 0.05, 0.74, -0.45, 0.7, -0.5, 0x5f6670));
+  // 냉각탑
+  parts.push(cylinder(0.3, 0.9, 0.5, 0.08, 0.35, 0xe9ecef, 14, 0.2));
+  parts.push(cylinder(0.2, 0.04, 0.5, 0.98, 0.35, 0x8d949c, 14));
+  // 굴뚝 (적백 줄무늬)
+  parts.push(cylinder(0.075, 0.5, -0.65, 0.08, 0.45, 0xd9534f, 10, 0.065));
+  parts.push(cylinder(0.065, 0.45, -0.65, 0.58, 0.45, 0xf4f4f4, 10, 0.055));
+  parts.push(cylinder(0.055, 0.35, -0.65, 1.03, 0.45, 0xd9534f, 10, 0.045));
+  // 변압기·송전탑 느낌의 작은 박스
+  parts.push(boxOnGround(0.3, 0.2, 0.3, 0.35, 0.08, -0.55, 0x4d5560));
+  parts.push(boxOnGround(0.2, 0.28, 0.2, -0.2, 0.08, 0.5, 0x4d5560));
+  // 발전소 창: 건물 정면에 가는 띠
+  const win: THREE.BufferGeometry[] = [];
+  for (let c = 0; c < 4; c++) win.push(windowQuad(0.16, 0.12, -0.8 + c * 0.24, 0.4, -0.5 + 0.35 + WIN_OUT, 0));
+  return { body: merge(parts), windows: merge(win) };
+}
+
+export type ModelKey = string;
+export const modelKey = (kind: number, level: number): ModelKey => `${kind}:${level}`;
+
+export function buildAllModels(): Map<ModelKey, BuildingModel> {
+  const map = new Map<ModelKey, BuildingModel>();
+  for (let lv = 1; lv <= 3; lv++) {
+    map.set(modelKey(K.RES, lv), residential(lv));
+    map.set(modelKey(K.COM, lv), commercial(lv));
+    map.set(modelKey(K.IND, lv), industrial(lv));
+  }
+  map.set(modelKey(K.PLANT, 1), plant());
+  return map;
+}
