@@ -273,3 +273,317 @@ kbd {
   height: 100%;
   background: var(--accent);
 }
+
+/* ── 상단 바 ── */
+#top-area {
+  position: fixed;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 16px);
+  pointer-events: none;
+}
+#top-area > #topbar {
+  pointer-events: auto;
+}
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  max-width: calc(100vw - 16px);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+#topbar .stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  min-width: 0;
+}
+#topbar .stat .ico {
+  font-size: 20px;
+}
+#topbar .stat div {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+#topbar .stat b {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#topbar .stat b.neg {
+  color: var(--bad);
+}
+#topbar small {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+#topbar small.pos {
+  color: var(--good);
+}
+#topbar small.neg {
+  color: var(--bad);
+}
+#topbar .speed {
+  display: flex;
+  gap: 3px;
+  padding: 0 8px;
+}
+#topbar .speed button,
+#topbar .menu-btn {
+  min-width: 34px;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+#topbar .speed button:hover,
+#topbar .menu-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+#topbar .speed button.active {
+  background: rgba(95, 176, 255, 0.28);
+  border-color: var(--accent);
+}
+#topbar .menu-btn {
+  font-size: 16px;
+}
+
+#menu {
+  position: fixed;
+  top: 64px;
+  right: 14px;
+  display: none;
+  flex-direction: column;
+  padding: 6px;
+  min-width: 150px;
+  z-index: 30;
+}
+#menu.show {
+  display: flex;
+}
+#menu button {
+  text-align: left;
+  padding: 8px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font-size: 13px;
+}
+#menu button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+#menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── RCI 수요 바 ── */
+#rci {
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px 8px;
+}
+#rci .col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+}
+#rci .track {
+  position: relative;
+  width: 16px;
+  height: 84px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+#rci .track i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  transition: height 0.4s, bottom 0.4s;
+}
+#rci .R i {
+  background: var(--r);
+}
+#rci .C i {
+  background: var(--c);
+}
+#rci .I i {
+  background: var(--i);
+}
+#rci .track i.neg {
+  opacity: 0.45;
+}
+#rci .mid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* ── 토스트 ── */
+#toasts {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.toast {
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  animation: toast-in 0.25s ease-out;
+  transition: opacity 0.5s, transform 0.5s;
+}
+.toast.good {
+  border-color: rgba(82, 210, 115, 0.7);
+}
+.toast.bad {
+  border-color: rgba(255, 107, 94, 0.7);
+}
+.toast.out {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+/* ── 모달 / 게임오버 ── */
+.modal-wrap {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 8, 16, 0.55);
+  z-index: 40;
+  pointer-events: auto;
+}
+.modal-wrap.hidden {
+  display: none;
+}
+.modal {
+  padding: 22px 26px;
+  max-width: min(420px, calc(100vw - 32px));
+  text-align: center;
+}
+.modal h2,
+.modal h3 {
+  margin: 0 0 10px;
+}
+.modal p {
+  margin: 0 0 14px;
+  line-height: 1.55;
+  font-size: 14px;
+}
+.modal .final {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.modal .final b {
+  color: var(--text);
+}
+.modal .btns {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.btn {
+  padding: 8px 18px;
+  border-radius: 9px;
+  font-size: 14px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.08);
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #08121f;
+  font-weight: 700;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.modal.help {
+  text-align: left;
+}
+.modal.help ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.modal.help .keys {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  #topbar .stat {
+    padding: 2px 8px;
+    gap: 5px;
+  }
+  #topbar .stat .ico {
+    font-size: 16px;
+  }
+  #topbar .stat small:not([data-k]) {
+    display: none;
+  }
+  #topbar .speed {
+    padding: 0 4px;
+  }
+  #topbar .speed button,
+  #topbar .menu-btn {
+    min-width: 30px;
+    padding: 0 6px;
+  }
+  #info {
+    top: auto;
+    bottom: 96px;
+    right: 8px;
+    width: 190px;
+  }
+  .tool-btn {
+    width: 54px;
+  }
+  #rci {
+    bottom: 96px;
+    left: 8px;
+    transform: scale(0.85);
+    transform-origin: bottom left;
+  }
+}

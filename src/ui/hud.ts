@@ -1,0 +1,259 @@
+import { GameState, ToastKind } from '../game/state';
+import { BANKRUPT_LIMIT, DAYS_PER_MONTH, MONTHS_PER_YEAR } from '../utils/constants';
+import { formatNumber } from '../utils/math';
+
+export interface HudHooks {
+  onNewGame: () => void;
+  onSave: () => void;
+  onLoad: () => void;
+  onSpeed: (speed: number) => void;
+  /** 저장 데이터가 있는지 */
+  hasSave: () => boolean;
+}
+
+const SPEEDS: { speed: number; label: string; title: string }[] = [
+  { speed: 0, label: '⏸', title: '일시정지 (Space)' },
+  { speed: 1, label: '▶', title: '속도 ×1' },
+  { speed: 2, label: '▶▶', title: '속도 ×2' },
+  { speed: 3, label: '▶▶▶', title: '속도 ×3' },
+];
+
+const faceFor = (h: number): string => (h >= 75 ? '😄' : h >= 50 ? '🙂' : h >= 30 ? '😐' : '😠');
+const colorFor = (h: number): string => (h >= 60 ? 'var(--good)' : h >= 35 ? '#f2c94c' : 'var(--bad)');
+
+export function formatDate(tick: number): string {
+  const day = (tick % DAYS_PER_MONTH) + 1;
+  const month = (Math.floor(tick / DAYS_PER_MONTH) % MONTHS_PER_YEAR) + 1;
+  const year = Math.floor(tick / (DAYS_PER_MONTH * MONTHS_PER_YEAR)) + 1;
+  return `${year}년 ${month}월 ${day}일`;
+}
+
+/** 확인/취소 모달 */
+export function confirmDialog(root: HTMLElement, message: string, okLabel = '확인'): Promise<boolean> {
+  return new Promise((resolve) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'modal-wrap';
+    wrap.innerHTML = `<div class="modal panel"><p>${message}</p><div class="btns"><button class="btn ghost">취소</button><button class="btn primary">${okLabel}</button></div></div>`;
+    const done = (v: boolean): void => {
+      wrap.remove();
+      resolve(v);
+    };
+    wrap.querySelector('.ghost')!.addEventListener('click', () => done(false));
+    wrap.querySelector('.primary')!.addEventListener('click', () => done(true));
+    root.appendChild(wrap);
+  });
+}
+
+export class Hud {
+  private readonly money: HTMLElement;
+  private readonly delta: HTMLElement;
+  private readonly pop: HTMLElement;
+  private readonly jobs: HTMLElement;
+  private readonly workers: HTMLElement;
+  private readonly happy: HTMLElement;
+  private readonly happyFace: HTMLElement;
+  private readonly date: HTMLElement;
+  private readonly speedBtns = new Map<number, HTMLButtonElement>();
+  private readonly rci: Record<'R' | 'C' | 'I', HTMLElement>;
+  private readonly toasts: HTMLElement;
+  private readonly menu: HTMLElement;
+  private readonly overlay: HTMLElement;
+  private readonly loadItem: HTMLButtonElement;
+  private lastMenuOpen = false;
+
+  constructor(
+    private readonly root: HTMLElement,
+    private readonly state: GameState,
+    private readonly hooks: HudHooks,
+  ) {
+    const top = document.createElement('div');
+    top.id = 'topbar';
+    top.className = 'panel';
+    top.innerHTML = `
+      <div class="stat money" title="자금 / 틱당 순수입"><span class="ico">💰</span><div><b data-k="money"></b><small data-k="delta"></small></div></div>
+      <div class="stat" title="전체 인구"><span class="ico">👥</span><div><b data-k="pop"></b><small>인구</small></div></div>
+      <div class="stat" title="일자리 / 노동력"><span class="ico">💼</span><div><b data-k="jobs"></b><small data-k="workers"></small></div></div>
+      <div class="stat" title="행복도 (0~100)"><span class="ico" data-k="face"></span><div><b data-k="happy"></b><small>행복도</small></div></div>
+      <div class="stat date" title="날짜"><span class="ico">📅</span><div><b data-k="date"></b><small>1초 = 1일</small></div></div>
+      <div class="speed"></div>
+      <button class="menu-btn" aria-label="메뉴">☰</button>
+    `;
+    const q = (k: string): HTMLElement => top.querySelector(`[data-k="${k}"]`) as HTMLElement;
+    this.money = q('money');
+    this.delta = q('delta');
+    this.pop = q('pop');
+    this.jobs = q('jobs');
+    this.workers = q('workers');
+    this.happy = q('happy');
+    this.happyFace = q('face');
+    this.date = q('date');
+
+    const speedBox = top.querySelector('.speed') as HTMLElement;
+    for (const s of SPEEDS) {
+      const b = document.createElement('button');
+      b.textContent = s.label;
+      b.title = s.title;
+      b.addEventListener('click', () => hooks.onSpeed(s.speed));
+      speedBox.appendChild(b);
+      this.speedBtns.set(s.speed, b);
+    }
+
+    // 메뉴
+    this.menu = document.createElement('div');
+    this.menu.id = 'menu';
+    this.menu.className = 'panel';
+    this.menu.innerHTML = `
+      <button data-a="save">💾 저장하기</button>
+      <button data-a="load">📂 불러오기</button>
+      <button data-a="new">🆕 새 게임</button>
+      <button data-a="help">❓ 도움말</button>`;
+    this.loadItem = this.menu.querySelector('[data-a="load"]') as HTMLButtonElement;
+    const menuBtn = top.querySelector('.menu-btn') as HTMLButtonElement;
+    menuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleMenu();
+    });
+    this.menu.addEventListener('click', (e) => {
+      const a = (e.target as HTMLElement).closest('button')?.dataset.a;
+      if (!a) return;
+      this.toggleMenu(false);
+      if (a === 'save') hooks.onSave();
+      else if (a === 'load') hooks.onLoad();
+      else if (a === 'new') hooks.onNewGame();
+      else if (a === 'help') this.showHelp();
+    });
+    window.addEventListener('click', () => this.toggleMenu(false));
+
+    // RCI 수요 바
+    const rciBox = document.createElement('div');
+    rciBox.id = 'rci';
+    rciBox.className = 'panel';
+    rciBox.title = '수요: 위로 차오를수록 해당 구역이 더 필요합니다';
+    rciBox.innerHTML = (['R', 'C', 'I'] as const)
+      .map(
+        (z) => `<div class="col ${z}"><div class="track"><i></i><span class="mid"></span></div><b>${
+          z === 'R' ? '주거' : z === 'C' ? '상업' : '공업'
+        }</b></div>`,
+      )
+      .join('');
+    this.rci = {
+      R: rciBox.querySelector('.R i') as HTMLElement,
+      C: rciBox.querySelector('.C i') as HTMLElement,
+      I: rciBox.querySelector('.I i') as HTMLElement,
+    };
+
+    this.toasts = document.createElement('div');
+    this.toasts.id = 'toasts';
+
+    this.overlay = document.createElement('div');
+    this.overlay.id = 'gameover';
+    this.overlay.className = 'modal-wrap hidden';
+
+    const area = document.createElement('div');
+    area.id = 'top-area';
+    area.append(top, this.toasts);
+    root.append(area, this.menu, rciBox, this.overlay);
+
+    state.on('toast', (msg, kind) => this.toast(msg, kind));
+    state.on('gameover', () => this.showGameOver());
+    state.on('reset', () => this.overlay.classList.add('hidden'));
+    this.update();
+  }
+
+  private toggleMenu(force?: boolean): void {
+    const open = force ?? !this.lastMenuOpen;
+    this.lastMenuOpen = open;
+    this.menu.classList.toggle('show', open);
+    if (open) this.loadItem.disabled = !this.hooks.hasSave();
+  }
+
+  toast(message: string, kind: ToastKind = 'info'): void {
+    const el = document.createElement('div');
+    el.className = `toast ${kind}`;
+    el.textContent = message;
+    this.toasts.appendChild(el);
+    while (this.toasts.children.length > 4) this.toasts.firstElementChild?.remove();
+    setTimeout(() => el.classList.add('out'), 3800);
+    setTimeout(() => el.remove(), 4400);
+  }
+
+  /** 수치 갱신 (주기적으로 호출) */
+  update(): void {
+    const s = this.state;
+    const st = s.stats;
+    this.money.textContent = `₩${formatNumber(s.money)}`;
+    this.money.classList.toggle('neg', s.money < 0);
+    const net = st.income - st.expense;
+    this.delta.textContent = `${net >= 0 ? '+' : '−'}${Math.abs(net).toFixed(1)}/일`;
+    this.delta.className = net >= 0 ? 'pos' : 'neg';
+    this.pop.textContent = formatNumber(st.pop);
+    this.jobs.textContent = formatNumber(st.jobs);
+    this.workers.textContent = `노동력 ${formatNumber(st.workers)}`;
+    this.workers.className = st.workers > st.jobs ? 'neg' : '';
+    const h = Math.round(s.happiness);
+    this.happy.textContent = `${h}`;
+    this.happy.style.color = colorFor(h);
+    this.happyFace.textContent = faceFor(h);
+    this.date.textContent = formatDate(s.tick);
+    for (const [sp, b] of this.speedBtns) b.classList.toggle('active', sp === s.speed);
+
+    this.setBar('R', st.demandR);
+    this.setBar('C', st.demandC);
+    this.setBar('I', st.demandI);
+  }
+
+  private setBar(z: 'R' | 'C' | 'I', v: number): void {
+    const el = this.rci[z];
+    const pct = Math.min(1, Math.abs(v)) * 50;
+    el.style.height = `${pct}%`;
+    el.style.bottom = v >= 0 ? '50%' : `${50 - pct}%`;
+    el.classList.toggle('neg', v < 0);
+  }
+
+  private showHelp(): void {
+    const wrap = document.createElement('div');
+    wrap.className = 'modal-wrap';
+    wrap.innerHTML = `<div class="modal panel help">
+      <h3>도움말</h3>
+      <ul>
+        <li><b>도로(1)</b> 드래그로 직선 설치. 구역은 반드시 도로 옆에 지정합니다.</li>
+        <li><b>구역(2)</b> 주거(R)·상업(C)·공업(I) 영역을 드래그로 지정합니다.</li>
+        <li><b>발전소(3)</b> 도로에 붙여 설치하면 연결된 도로망 전체로 전력이 공급됩니다.</li>
+        <li><b>철거(4)</b> 도로·구역·건물을 제거합니다 (환급 없음).</li>
+        <li><b>정보(5)</b> 타일이나 건물을 클릭해 상세 정보를 봅니다.</li>
+      </ul>
+      <p class="keys">우클릭 드래그: 이동 · 휠: 줌 · Q/E: 회전 · WASD: 이동 · Space: 일시정지 · 터치: 한 손가락 이동 / 두 손가락 핀치 줌</p>
+      <div class="btns"><button class="btn primary">닫기</button></div>
+    </div>`;
+    wrap.addEventListener('click', (e) => {
+      if (e.target === wrap || (e.target as HTMLElement).closest('.primary')) wrap.remove();
+    });
+    this.root.appendChild(wrap);
+  }
+
+  private showGameOver(): void {
+    const s = this.state;
+    this.overlay.innerHTML = `<div class="modal panel over">
+      <h2>💸 파산!</h2>
+      <p>자금이 ₩${formatNumber(BANKRUPT_LIMIT)} 아래로 떨어져 도시가 파산했습니다.</p>
+      <div class="final"><span>최종 인구 <b>${formatNumber(s.stats.pop)}명</b></span><span>운영 기간 <b>${formatDate(s.tick)}</b></span></div>
+      <div class="btns">
+        <button class="btn ghost" data-a="load">저장 불러오기</button>
+        <button class="btn primary" data-a="new">새 게임</button>
+      </div>
+    </div>`;
+    const load = this.overlay.querySelector('[data-a="load"]') as HTMLButtonElement;
+    load.disabled = !this.hooks.hasSave();
+    load.addEventListener('click', () => this.hooks.onLoad());
+    this.overlay.querySelector('[data-a="new"]')!.addEventListener('click', () => this.hooks.onNewGame());
+    this.overlay.classList.remove('hidden');
+  }
+
+  hideGameOver(): void {
+    this.overlay.classList.add('hidden');
+  }
+
+  get ui(): HTMLElement {
+    return this.root;
+  }
+}

@@ -46,6 +46,7 @@ const yes = (v: boolean, good = '정상', bad = '없음'): string =>
 export class InfoPanel {
   private readonly el: HTMLDivElement;
   private tile: Tile | null = null;
+  private lastHtml = '';
 
   constructor(
     root: HTMLElement,
@@ -81,7 +82,7 @@ export class InfoPanel {
   render(): void {
     this.onChange(this.footprint());
     if (!this.tile) {
-      this.el.innerHTML = `<div class="title">정보</div><div class="hint">‘정보’ 도구(5)로 타일이나 건물을 클릭하면 상세 정보가 표시됩니다.</div>`;
+      this.setHtml('<div class="title">정보</div><div class="hint">‘정보’ 도구(5)로 타일이나 건물을 클릭하면 상세 정보가 표시됩니다.</div>');
       return;
     }
     const s = this.state;
@@ -155,6 +156,13 @@ export class InfoPanel {
     }
     row('좌표', `${x}, ${y}`);
 
-    this.el.innerHTML = `<div class="title">${title}<button class="close" aria-label="닫기">✕</button></div>${rows.join('')}`;
+    this.setHtml(`<div class="title">${title}<button class="close" aria-label="닫기">✕</button></div>${rows.join('')}`);
+  }
+
+  /** 내용이 바뀐 경우에만 DOM 갱신 (클릭 도중 버튼이 교체되는 것 방지) */
+  private setHtml(html: string): void {
+    if (html === this.lastHtml) return;
+    this.lastHtml = html;
+    this.el.innerHTML = html;
   }
 }

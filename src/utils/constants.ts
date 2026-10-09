@@ -21,7 +21,7 @@ export const UPKEEP = {
 };
 
 /** 건물 레벨 1당, 틱마다 들어오는 세금 (행복도 보정 전) */
-export const TAX_PER_LEVEL = { R: 0.9, C: 1.5, I: 1.8 };
+export const TAX_PER_LEVEL = { R: 0.25, C: 0.45, I: 0.5 };
 /** 행복도에 따른 세수 배율: lerp(min, max, happiness/100) */
 export const TAX_HAPPY_MULT = { min: 0.5, max: 1.5 };
 
@@ -56,11 +56,11 @@ export const DEMAND = {
 
 export const GROWTH = {
   /** 빈 구역 타일이 한 틱에 건물로 바뀔 확률 = spawnChance * 수요 */
-  spawnChance: 0.07,
+  spawnChance: 0.05,
   maxSpawnPerTick: 3,
   /** 레벨업 진행도 증가량/틱 = base + perDemand * 수요 (1.0 도달 시 레벨업) */
-  levelBase: 0.02,
-  levelPerDemand: 0.07,
+  levelBase: 0.012,
+  levelPerDemand: 0.04,
   /** 해당 레벨로 올라가기 위한 최소 수요 */
   minDemandForLevel: [0, 0, 0.05, 0.15],
 };
