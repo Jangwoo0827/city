@@ -6,6 +6,8 @@ import { ToolController, createToolbar } from './ui/toolbar';
 import { InputController } from './ui/input';
 import { InfoPanel, Tooltip } from './ui/panels';
 import { Hud, confirmDialog } from './ui/hud';
+import { hasSave, loadGame, saveGame } from './utils/save';
+import { AUTOSAVE_SECONDS } from './utils/constants';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ui = document.getElementById('ui') as HTMLElement;
@@ -29,14 +31,25 @@ const hud = new Hud(ui, state, {
     if (!state.gameOver && !(await confirmDialog(ui, '새 게임을 시작할까요? 저장하지 않은 진행 상황은 사라집니다.', '새 게임'))) return;
     startNewGame();
   },
-  onSave: () => state.toast('저장 기능은 곧 추가됩니다'),
-  onLoad: () => state.toast('불러오기 기능은 곧 추가됩니다'),
-  hasSave: () => false,
+  onSave: () => {
+    if (state.gameOver) return state.toast('파산한 도시는 저장할 수 없습니다', 'bad');
+    state.toast(saveGame(state) ? '💾 저장했습니다' : '저장에 실패했습니다 (브라우저 저장소 사용 불가)', 'info');
+  },
+  onLoad: async () => {
+    if (!hasSave()) return;
+    if (!state.gameOver && !(await confirmDialog(ui, '저장된 도시를 불러올까요? 현재 진행 상황은 사라집니다.', '불러오기'))) return;
+    if (loadGame(state)) {
+      hud.update();
+      state.toast('📂 저장된 도시를 불러왔습니다', 'good');
+    } else state.toast('저장 데이터를 불러올 수 없습니다', 'bad');
+  },
+  hasSave,
 });
 
 function startNewGame(): void {
   state.reset();
   refreshStats(state);
+  saveGame(state);
   hud.hideGameOver();
   hud.update();
   state.toast('도로를 깔고 → 구역을 지정하고 → 발전소를 연결해 보세요!', 'info');
@@ -59,8 +72,22 @@ const input = new InputController(view, state, tools, tip, {
 
 state.on('reset', () => view.city.resetAnimations());
 refreshStats(state);
+if (loadGame(state)) {
+  state.toast('📂 저장된 도시를 불러왔습니다', 'good');
+} else {
+  state.toast('도로를 깔고 → 구역을 지정하고 → 발전소를 연결해 보세요!', 'info');
+}
 hud.update();
-state.toast('도로를 깔고 → 구역을 지정하고 → 발전소를 연결해 보세요!', 'info');
+
+// 자동 저장: 30초마다 + 탭을 닫거나 새로고침/숨길 때
+let autosaveTimer = 0;
+const autosave = (): void => {
+  if (!state.gameOver) saveGame(state);
+};
+window.addEventListener('beforeunload', autosave);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') autosave();
+});
 
 if (import.meta.env.DEV) (window as unknown as { __game: unknown }).__game = { state, view, tools, tick };
 
@@ -82,6 +109,12 @@ function frame(now: number): void {
       steps++;
     }
     if (steps === 6) simAcc = 0;
+  }
+
+  autosaveTimer += rawDt;
+  if (autosaveTimer >= AUTOSAVE_SECONDS) {
+    autosaveTimer = 0;
+    autosave();
   }
 
   infoTimer += dt;

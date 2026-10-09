@@ -98,9 +98,9 @@ kbd {
 /* ── 하단 툴바 ── */
 #toolbar-wrap {
   position: fixed;
-  left: 50%;
+  left: 8px;
+  right: 8px;
   bottom: 14px;
-  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -277,14 +277,13 @@ kbd {
 /* ── 상단 바 ── */
 #top-area {
   position: fixed;
-  left: 50%;
+  left: 8px;
+  right: 8px;
   top: 10px;
-  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  max-width: calc(100vw - 16px);
   pointer-events: none;
 }
 #top-area > #topbar {
@@ -553,12 +552,19 @@ kbd {
 }
 
 @media (max-width: 760px) {
+  #topbar {
+    max-width: 100%;
+    gap: 2px 0;
+  }
   #topbar .stat {
     padding: 2px 8px;
     gap: 5px;
   }
   #topbar .stat .ico {
     font-size: 16px;
+  }
+  #topbar .stat b {
+    font-size: 14px;
   }
   #topbar .stat small:not([data-k]) {
     display: none;
@@ -569,21 +575,27 @@ kbd {
   #topbar .speed button,
   #topbar .menu-btn {
     min-width: 30px;
+    height: 30px;
     padding: 0 6px;
   }
   #info {
     top: auto;
-    bottom: 96px;
+    bottom: 148px;
     right: 8px;
-    width: 190px;
+    width: 176px;
+    font-size: 12px;
   }
   .tool-btn {
-    width: 54px;
+    width: 58px;
   }
   #rci {
-    bottom: 96px;
+    bottom: 148px;
     left: 8px;
     transform: scale(0.85);
     transform-origin: bottom left;
+  }
+  .toast {
+    font-size: 13px;
+    padding: 6px 12px;
   }
 }
