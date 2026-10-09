@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { COLORS, GRID_SIZE } from '../utils/constants';
 import { CameraRig } from './camera';
 import { Overlay } from './overlay';
+import { CityMeshes } from './instancing';
+import type { GameState } from '../game/state';
 
 /** three.js 씬 전체를 소유하는 뷰 */
 export class GameView {
@@ -9,11 +11,15 @@ export class GameView {
   readonly scene = new THREE.Scene();
   readonly rig = new CameraRig();
   readonly overlay = new Overlay();
+  readonly city: CityMeshes;
 
   readonly sun = new THREE.DirectionalLight(0xffffff, 2.2);
   readonly ambient = new THREE.HemisphereLight(0xcfe8ff, 0x8aa070, 0.9);
 
-  constructor(readonly canvas: HTMLCanvasElement) {
+  constructor(
+    readonly canvas: HTMLCanvasElement,
+    readonly state: GameState,
+  ) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -24,7 +30,8 @@ export class GameView {
 
     this.setupLights();
     this.setupGround();
-    this.scene.add(this.overlay.mesh);
+    this.city = new CityMeshes(state);
+    this.scene.add(this.city.group, this.overlay.mesh);
 
     window.addEventListener('resize', () => this.resize());
     this.resize();
@@ -102,8 +109,9 @@ export class GameView {
     return { x, y };
   }
 
-  render(dt: number): void {
+  render(dt: number, time: number): void {
     this.rig.update(dt);
+    this.city.sync(time);
     this.renderer.render(this.scene, this.rig.camera);
   }
 }

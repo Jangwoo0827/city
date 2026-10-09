@@ -9,7 +9,7 @@ const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ui = document.getElementById('ui') as HTMLElement;
 
 const state = new GameState();
-const view = new GameView(canvas);
+const view = new GameView(canvas, state);
 const tools = new ToolController();
 const tip = new Tooltip(ui);
 createToolbar(ui, tools);
@@ -26,7 +26,7 @@ function frame(now: number): void {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   input.update(dt);
-  view.render(dt);
+  view.render(dt, now / 1000);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
