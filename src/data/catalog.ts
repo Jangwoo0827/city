@@ -104,33 +104,33 @@ export const FACILITIES: Record<number, FacilityDef> = {
   },
   [FAC.CLINIC]: {
     id: FAC.CLINIC, name: '진료소', icon: '🏥', category: 'health', w: 2, h: 2,
-    cost: 1200, upkeep: 3, capacity: 300, needsWater: false, radius: 8, node: 'fac_clinic',
-    desc: '반경 8칸 · 300명 수용 · 건강·행복 ↑',
+    cost: 1200, upkeep: 3, capacity: 600, needsWater: false, radius: 14, node: 'fac_clinic',
+    desc: '반경 14칸 · 600명 수용 · 건강·행복 ↑',
   },
   [FAC.HOSPITAL]: {
     id: FAC.HOSPITAL, name: '병원', icon: '⚕️', category: 'health', w: 3, h: 3,
-    cost: 6000, upkeep: 12, capacity: 1500, needsWater: false, radius: 14, node: 'fac_hospital',
-    desc: '반경 14칸 · 1,500명 수용 · 넓은 지역 의료',
+    cost: 6000, upkeep: 12, capacity: 3000, needsWater: false, radius: 24, node: 'fac_hospital',
+    desc: '반경 24칸 · 3,000명 수용 · 넓은 지역 의료',
   },
   [FAC.POLICE]: {
     id: FAC.POLICE, name: '경찰서', icon: '👮', category: 'police', w: 2, h: 2,
-    cost: 1800, upkeep: 4, capacity: 0, needsWater: false, radius: 9, node: 'fac_police',
-    desc: '반경 9칸 · 범죄 감소 (인구가 많을수록 필요)',
+    cost: 1800, upkeep: 4, capacity: 0, needsWater: false, radius: 16, node: 'fac_police',
+    desc: '반경 16칸 · 범죄 감소 (인구가 많을수록 필요)',
   },
   [FAC.FIRE]: {
     id: FAC.FIRE, name: '소방서', icon: '🚒', category: 'fire', w: 2, h: 2,
-    cost: 1600, upkeep: 4, capacity: 0, needsWater: false, radius: 10, node: 'fac_fire',
-    desc: '반경 10칸 · 화재를 진압해 건물 소실을 막음',
+    cost: 1600, upkeep: 4, capacity: 0, needsWater: false, radius: 18, node: 'fac_fire',
+    desc: '반경 18칸 · 화재를 진압해 건물 소실을 막음',
   },
   [FAC.PARK_S]: {
     id: FAC.PARK_S, name: '소공원', icon: '🌳', category: 'park', w: 1, h: 1,
-    cost: 300, upkeep: 1, capacity: 0, needsWater: false, radius: 4, node: 'fac_park_s',
-    desc: '반경 4칸 · 행복도 ↑ (가장 저렴한 행복 수단)',
+    cost: 300, upkeep: 1, capacity: 0, needsWater: false, radius: 7, node: 'fac_park_s',
+    desc: '반경 7칸 · 행복도 ↑ (가장 저렴한 행복 수단)',
   },
   [FAC.PARK_L]: {
     id: FAC.PARK_L, name: '대공원', icon: '🏞️', category: 'park', w: 2, h: 2,
-    cost: 1000, upkeep: 2, capacity: 0, needsWater: false, radius: 7, node: 'fac_park_l',
-    desc: '반경 7칸 · 행복도 ↑↑',
+    cost: 1000, upkeep: 2, capacity: 0, needsWater: false, radius: 12, node: 'fac_park_l',
+    desc: '반경 12칸 · 행복도 ↑↑',
   },
 };
 

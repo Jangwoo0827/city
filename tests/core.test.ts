@@ -197,7 +197,7 @@ describe('서비스 건물(P3)', () => {
     applyAction(s, 'facility', opts({ facility: FAC.CLINIC }), T(30, 30), T(30, 30)); // 2×2, 중심 (30.5, 30.5)
     const near = house(s, 31, 31);
     const mid = house(s, 38, 31);
-    const far = house(s, 45, 31);
+    const far = house(s, 56, 31);
     refreshStats(s);
     expect(s.cov.health[near]).toBe(1);
     expect(s.cov.health[mid]).toBeGreaterThan(0);
@@ -209,14 +209,14 @@ describe('서비스 건물(P3)', () => {
   it('병원 수용량보다 주민이 많으면 효율이 떨어진다', () => {
     const s = new GameState();
     unlockAll(s);
-    applyAction(s, 'facility', opts({ facility: FAC.CLINIC }), T(30, 30), T(30, 30)); // 수용 300명
-    // 레벨 3 주택(28명) 20채 = 560명
-    for (let k = 0; k < 20; k++) house(s, 28 + (k % 5), 33 + Math.floor(k / 5));
+    applyAction(s, 'facility', opts({ facility: FAC.CLINIC }), T(30, 30), T(30, 30)); // 수용 600명
+    // 레벨 3 주택(28명) 30채 = 840명
+    for (let k = 0; k < 30; k++) house(s, 28 + (k % 6), 33 + Math.floor(k / 6));
     refreshStats(s);
     const load = [...s.serviceLoad.values()][0];
-    expect(load.pop).toBe(560);
-    expect(load.eff).toBeCloseTo(300 / 560, 3);
-    expect(s.stats.covHealth).toBeLessThan(0.6);
+    expect(load.pop).toBe(840);
+    expect(load.eff).toBeCloseTo(600 / 840, 3);
+    expect(s.stats.covHealth).toBeCloseTo(600 / 840, 2); // 반경 안쪽이라 효율이 곧 커버리지
   });
 
   it('의료·공원 커버리지는 행복도 목표치를 올린다', () => {
