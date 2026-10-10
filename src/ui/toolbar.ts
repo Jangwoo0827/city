@@ -5,6 +5,7 @@ import { COST, TERRAIN } from '../utils/constants';
 import { FACILITIES, FACILITY_LIST, FAC, FacilityCategory, ROAD_TYPES } from '../data/catalog';
 import { DEV_NODE_MAP } from '../data/devtree';
 import { ZoneType } from '../world/zones';
+import { Clip, rotateClip } from '../game/clipboard';
 import { ZONES } from '../data/zones';
 
 type Listener = () => void;
@@ -17,6 +18,10 @@ export class ToolController {
   roadType = 0;
   terrain: TerrainMode = 'dig';
   digWidth = 3;
+  /** 복사한 영역 (없으면 null) */
+  clip: Clip | null = null;
+  /** 복사 도구의 모드: select = 영역 선택, paste = 붙여넣기 */
+  copyMode: 'select' | 'paste' = 'select';
   /** 터치 기기에서 한 손가락 드래그가 이동(false)인지 건설(true)인지 */
   touchBuild = false;
   private listeners: Listener[] = [];
@@ -31,6 +36,28 @@ export class ToolController {
 
   setTool(t: Tool): void {
     this.tool = t;
+    if (t === 'copy' && !this.clip) this.copyMode = 'select';
+    this.fire();
+  }
+
+  /** 새로 복사한 영역을 저장하고 곧바로 붙여넣기 모드로 */
+  setClip(c: Clip | null): void {
+    this.clip = c;
+    this.copyMode = c ? 'paste' : 'select';
+    this.tool = 'copy';
+    this.fire();
+  }
+
+  setCopyMode(m: 'select' | 'paste'): void {
+    if (m === 'paste' && !this.clip) return;
+    this.copyMode = m;
+    this.tool = 'copy';
+    this.fire();
+  }
+
+  rotateClip(): void {
+    if (!this.clip) return;
+    this.clip = rotateClip(this.clip);
     this.fire();
   }
 
@@ -89,6 +116,7 @@ const TOOLS: ToolDef[] = [
   { tool: 'terrain', icon: '🌊', name: '지형', hint: `강·호수 만들기(칸당 ₩${TERRAIN.digCost}) / 물 메우기(칸당 ₩${TERRAIN.fillCost})` },
   { tool: 'demolish', icon: '🧨', name: '철거', hint: '드래그로 영역 철거 · 건설비의 50% 환급' },
   { tool: 'select', icon: '🔍', name: '정보', hint: '타일·건물 정보 보기' },
+  { tool: 'copy', icon: '📋', name: '복사', hint: '영역을 드래그해 복사 → 클릭해서 붙여넣기 (Ctrl+V, R 회전)' },
 ];
 
 const CATEGORY_NAME: Record<FacilityCategory, string> = {
@@ -175,6 +203,32 @@ export function createToolbar(root: HTMLElement, tools: ToolController, state: G
   }
   terrainBar.append(digBtn, fillBtn, widthBox);
 
+  // ── 서브바: 복사·붙여넣기 ──
+  const copyBar = document.createElement('div');
+  copyBar.className = 'subbar';
+  const selBtn = document.createElement('button');
+  selBtn.className = 'sub-btn';
+  selBtn.innerHTML = '<span>📋 영역 복사</span><small>드래그로 범위 지정</small>';
+  selBtn.addEventListener('click', () => tools.setCopyMode('select'));
+  const pasteBtn = document.createElement('button');
+  pasteBtn.className = 'sub-btn';
+  pasteBtn.addEventListener('click', () => {
+    if (!tools.clip) {
+      state.toast('먼저 영역을 드래그해 복사하세요', 'bad');
+      return;
+    }
+    tools.setCopyMode('paste');
+  });
+  const rotBtn = document.createElement('button');
+  rotBtn.className = 'sub-btn';
+  rotBtn.innerHTML = '<span>🔄 회전</span><small>R 키</small>';
+  rotBtn.addEventListener('click', () => tools.rotateClip());
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'sub-btn';
+  clearBtn.innerHTML = '<span>✖ 비우기</span><small>복사본 삭제</small>';
+  clearBtn.addEventListener('click', () => tools.setClip(null));
+  copyBar.append(selBtn, pasteBtn, rotBtn, clearBtn);
+
   // ── 서브바: 시설 ──
   const facBar = document.createElement('div');
   facBar.className = 'subbar wide';
@@ -229,7 +283,7 @@ export function createToolbar(root: HTMLElement, tools: ToolController, state: G
   touchToggle.addEventListener('click', () => tools.setTouchBuild(!tools.touchBuild));
   if (window.matchMedia('(pointer: coarse)').matches) wrap.classList.add('touch');
 
-  wrap.append(zoneBar, roadBar, terrainBar, facBar, bar, touchToggle);
+  wrap.append(zoneBar, roadBar, terrainBar, copyBar, facBar, bar, touchToggle);
   root.appendChild(wrap);
 
   const lockLabel = (node: string | null): string => {
@@ -252,6 +306,15 @@ export function createToolbar(root: HTMLElement, tools: ToolController, state: G
     roadBar.classList.toggle('show', tools.tool === 'road');
     facBar.classList.toggle('show', tools.tool === 'facility');
     terrainBar.classList.toggle('show', tools.tool === 'terrain');
+    copyBar.classList.toggle('show', tools.tool === 'copy');
+    selBtn.classList.toggle('active', tools.tool === 'copy' && tools.copyMode === 'select');
+    pasteBtn.classList.toggle('active', tools.tool === 'copy' && tools.copyMode === 'paste');
+    pasteBtn.classList.toggle('locked', !tools.clip);
+    pasteBtn.innerHTML = tools.clip
+      ? `<span>📌 붙여넣기</span><small>${tools.clip.items.length}개 · ${tools.clip.w}×${tools.clip.h}칸 · Ctrl+V</small>`
+      : '<span>📌 붙여넣기</span><small>복사본 없음</small>';
+    rotBtn.classList.toggle('locked', !tools.clip);
+    clearBtn.classList.toggle('locked', !tools.clip);
     digBtn.classList.toggle('active', tools.tool === 'terrain' && tools.terrain === 'dig');
     fillBtn.classList.toggle('active', tools.tool === 'terrain' && tools.terrain === 'fill');
     widthBtns.forEach((b, i) => b.classList.toggle('active', tools.terrain === 'dig' && tools.digWidth === TERRAIN.widths[i]));

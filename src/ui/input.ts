@@ -1,5 +1,6 @@
 import { GameState } from '../game/state';
 import { Tool, applyAction, previewAction } from '../game/actions';
+import { applyPaste, copyArea, previewPaste } from '../game/clipboard';
 import { Tile, sectionIndex } from '../world/grid';
 import { FACILITIES } from '../data/catalog';
 import { ZONES } from '../data/zones';
@@ -22,6 +23,7 @@ const TOOL_KEYS: Record<string, Tool> = {
   Digit4: 'terrain',
   Digit5: 'demolish',
   Digit6: 'select',
+  Digit7: 'copy',
 };
 
 export interface InputHooks {
@@ -244,6 +246,22 @@ export class InputController {
       this.hooks.onSelect(b);
       return;
     }
+    if (tool === 'copy') {
+      if (this.tools.copyMode === 'select') {
+        const clip = copyArea(this.state, a, b);
+        if (!clip) {
+          this.state.toast('복사할 도로·구역·시설이 없습니다', 'bad');
+        } else {
+          this.tools.setClip(clip);
+          this.state.toast(`📋 ${clip.items.length}개 복사됨 (${clip.w}×${clip.h}칸) — 클릭해서 붙여넣기 · R 회전 · Esc 종료`, 'good');
+        }
+      } else if (this.tools.clip) {
+        const res = applyPaste(this.state, this.tools.clip, b);
+        if (res.message) this.state.toast(res.message, 'bad');
+      }
+      this.refreshPreview(this.lastX, this.lastY);
+      return;
+    }
     const res = applyAction(this.state, tool, this.tools.options(), a, b);
     if (res.message) this.state.toast(res.message, 'bad');
     this.refreshPreview(this.lastX, this.lastY);
@@ -280,7 +298,10 @@ export class InputController {
       this.view.showPlacementRange(0, 0, 0);
     }
     const a = this.buildStart ?? this.hover;
-    const pv = previewAction(this.state, this.tools.tool, this.tools.options(), a, this.hover);
+    const pasting = this.tools.tool === 'copy' && this.tools.copyMode === 'paste' && this.tools.clip;
+    const pv = pasting
+      ? previewPaste(this.state, this.tools.clip!, this.hover)
+      : previewAction(this.state, this.tools.tool, this.tools.options(), a, this.hover);
     this.view.overlay.set(pv);
     const anyOk = pv.tiles.some((t) => t.ok);
     this.tip.show(pv.label, clientX, clientY, anyOk || pv.neutral);
@@ -312,6 +333,16 @@ export class InputController {
           this.tools.setTool('select');
           break;
         default: {
+          if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV') {
+            e.preventDefault();
+            if (this.tools.clip) this.tools.setCopyMode('paste');
+            else this.state.toast('복사한 내용이 없습니다 (복사 도구 7번으로 영역을 드래그하세요)', 'bad');
+            break;
+          }
+          if (this.tools.tool === 'copy' && e.code === 'KeyR') {
+            this.tools.rotateClip();
+            break;
+          }
           // 구역 도구 사용 중에는 글자 키로 구역 종류 선택
           if (this.tools.tool === 'zone') {
             const zd = ZONES.find((z) => `Key${z.key}` === e.code);

@@ -10,7 +10,7 @@ import { GameState } from './state';
 import { refreshStats } from './simulation';
 import { awardXp, isUnlocked } from './progression';
 
-export type Tool = 'road' | 'zone' | 'facility' | 'terrain' | 'demolish' | 'select';
+export type Tool = 'road' | 'zone' | 'facility' | 'terrain' | 'demolish' | 'select' | 'copy';
 
 /** 지형 편집 방식: dig = 물 만들기(강·호수), fill = 땅 메우기 */
 export type TerrainMode = 'dig' | 'fill';
@@ -39,7 +39,7 @@ export interface Preview {
   affordable: boolean;
 }
 
-interface Plan {
+export interface Plan {
   tiles: PreviewTile[];
   /** 새로 설치(비용 발생)되는 타일 */
   placeable: Tile[];
@@ -49,7 +49,7 @@ interface Plan {
   blocked?: string;
 }
 
-function planRoad(s: GameState, type: number, a: Tile, b: Tile): Plan {
+export function planRoad(s: GameState, type: number, a: Tile, b: Tile): Plan {
   const g = s.grid;
   const def = ROAD_TYPES[type];
   const tiles: PreviewTile[] = [];
@@ -80,7 +80,8 @@ function planRoad(s: GameState, type: number, a: Tile, b: Tile): Plan {
   return { tiles, placeable, costs };
 }
 
-function planZone(s: GameState, zone: ZoneType, a: Tile, b: Tile): Plan {
+/** assumeAccess: 아직 설치되지 않았지만 곧 설치될 도로(붙여넣기)까지 고려한 도로 접근 판정 */
+export function planZone(s: GameState, zone: ZoneType, a: Tile, b: Tile, assumeAccess?: (x: number, y: number) => boolean): Plan {
   const g = s.grid;
   const kind = ZONE_KIND[zone];
   const zdef = ZONE_BY_ID[zone];
@@ -93,7 +94,7 @@ function planZone(s: GameState, zone: ZoneType, a: Tile, b: Tile): Plan {
     const i = g.idx(t.x, t.y);
     const k = g.kind[i];
     const free = k === K.EMPTY || (isZoneKind(k) && g.level[i] === 0);
-    const ok = free && s.isUnlockedAt(t.x, t.y) && !g.isWater(t.x, t.y) && g.access[i] >= 0;
+    const ok = free && s.isUnlockedAt(t.x, t.y) && !g.isWater(t.x, t.y) && (g.access[i] >= 0 || (assumeAccess?.(t.x, t.y) ?? false));
     tiles.push({ ...t, ok });
     if (ok && k !== kind) {
       placeable.push(t);
@@ -123,7 +124,7 @@ export function canPlaceFacility(s: GameState, facId: number, at: Tile): boolean
  * 한 번 클릭하면(영역이 1칸) 그 칸에 하나, 드래그하면 영역 안에 들어가는 만큼 한꺼번에 깐다.
  * 각 시설은 독립적으로 설치 가능 여부(빈 땅·물 인접 조건 등)를 판정한다.
  */
-function planFacility(s: GameState, facId: number, a: Tile, b: Tile): Plan {
+export function planFacility(s: GameState, facId: number, a: Tile, b: Tile): Plan {
   const def = FACILITIES[facId];
   if (!isUnlocked(s, def.node)) return { tiles: [], placeable: [], costs: [], blocked: `${def.name}은(는) 개발 트리에서 해금해야 합니다` };
   const g = s.grid;
@@ -228,6 +229,8 @@ function makePlan(s: GameState, tool: Tool, o: ToolOptions, a: Tile, b: Tile): P
       return planFacility(s, o.facility, a, b);
     case 'terrain':
       return planTerrain(s, o.terrain, o.width, a, b);
+    case 'copy': // 복사할 영역 선택 (미리보기만)
+      return { tiles: rectTiles(a, b).filter((t) => s.grid.inBounds(t.x, t.y)).map((t) => ({ ...t, ok: true })), placeable: [], costs: [] };
     case 'demolish':
       return planDemolish(s, a, b);
     default:
@@ -264,6 +267,9 @@ export function previewAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile,
         if (n === 0 && def.needsWater) label += ' (물 타일에 붙여서 설치)';
         break;
       }
+      case 'copy':
+        label = `복사 영역 ${Math.abs(b.x - a.x) + 1}×${Math.abs(b.y - a.y) + 1}칸`;
+        break;
       case 'terrain':
         label = o.terrain === 'dig' ? (n > 0 ? `물 만들기 ${n}칸` : '물 만들기 (빈 땅에만)') : n > 0 ? `땅 메우기 ${n}칸` : '땅 메우기 (빈 물 타일에만)';
         break;
@@ -280,7 +286,7 @@ export function previewAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile,
     tiles: plan.tiles.map((t) => (affordable && !plan.blocked ? t : { ...t, ok: false })),
     cost,
     label,
-    neutral: tool === 'select',
+    neutral: tool === 'select' || tool === 'copy',
     affordable,
   };
 }
@@ -295,7 +301,7 @@ export interface ActionResult {
 export function applyAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile, b: Tile): ActionResult {
   if (s.gameOver) return { ok: false, placed: 0 };
   const g = s.grid;
-  if (tool === 'select') return { ok: true, placed: 0 };
+  if (tool === 'select' || tool === 'copy') return { ok: true, placed: 0 };
   const plan = makePlan(s, tool, o, a, b);
   if (plan.blocked) return { ok: false, placed: 0, message: plan.blocked };
   if (plan.placeable.length === 0) {
@@ -317,28 +323,10 @@ export function applyAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile, b
     if (tool === 'demolish' && g.kind[i] === K.EMPTY) continue;
     switch (tool) {
       case 'road':
-        if (g.kind[i] !== K.ROAD) xp += XP_AWARD.road;
-        g.kind[i] = K.ROAD;
-        g.roadType[i] = o.roadType;
-        break;
       case 'zone':
-        g.kind[i] = ZONE_KIND[o.zone];
-        g.level[i] = 0;
-        g.progress[i] = 0;
-        g.abandoned[i] = 0;
-        g.neglect[i] = 0;
+      case 'facility':
+        xp += commitTile(s, tool, o, t);
         break;
-      case 'facility': {
-        const def = FACILITIES[o.facility];
-        for (const f of facilityFootprint(def, t.x, t.y)) {
-          const fi = g.idx(f.x, f.y);
-          g.kind[fi] = K.FAC;
-          g.owner[fi] = i + 1;
-          g.fac[fi] = o.facility;
-        }
-        xp += XP_AWARD.facility;
-        break;
-      }
       case 'terrain':
         g.terrain[i] = o.terrain === 'dig' ? T.WATER : T.LAND;
         break;
@@ -361,6 +349,44 @@ export function applyAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile, b
   }
   if (broke) s.toast('자금이 부족합니다', 'bad');
   return { ok: placed > 0, placed };
+}
+
+/**
+ * 도로·구역·시설 한 칸(시설은 한 기)을 실제로 설치한다. 비용·검증은 호출 측(계획 단계)에서 끝난 상태.
+ * 얻는 XP 를 돌려준다. (도구 적용과 붙여넣기가 함께 쓴다)
+ */
+export function commitTile(s: GameState, tool: 'road' | 'zone' | 'facility', o: ToolOptions, t: Tile): number {
+  const g = s.grid;
+  const i = g.idx(t.x, t.y);
+  if (tool === 'road') {
+    const xp = g.kind[i] !== K.ROAD ? XP_AWARD.road : 0;
+    g.kind[i] = K.ROAD;
+    g.roadType[i] = o.roadType;
+    return xp;
+  }
+  if (tool === 'zone') {
+    g.kind[i] = ZONE_KIND[o.zone];
+    g.level[i] = 0;
+    g.progress[i] = 0;
+    g.abandoned[i] = 0;
+    g.neglect[i] = 0;
+    return 0;
+  }
+  const def = FACILITIES[o.facility];
+  for (const f of facilityFootprint(def, t.x, t.y)) {
+    const fi = g.idx(f.x, f.y);
+    g.kind[fi] = K.FAC;
+    g.owner[fi] = i + 1;
+    g.fac[fi] = o.facility;
+  }
+  return XP_AWARD.facility;
+}
+
+/** 편집 후 공통 마무리: 변경 플래그, 통계 재계산, XP */
+export function finishEdit(s: GameState, xp: number): void {
+  s.dirty.roads = s.dirty.zones = s.dirty.buildings = s.dirty.net = true;
+  refreshStats(s);
+  awardXp(s, xp);
 }
 
 /** 한 타일(시설은 통째로)을 비운다. 환급 없음. */

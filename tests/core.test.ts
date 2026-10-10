@@ -3,6 +3,7 @@ import { GameState } from '../src/game/state';
 import { applyAction, previewAction, canPlaceFacility, ToolOptions } from '../src/game/actions';
 import { meetsRequirements, refreshStats, tick } from '../src/game/simulation';
 import { updateFires } from '../src/game/events';
+import { applyPaste, copyArea, previewPaste, rotateClip } from '../src/game/clipboard';
 import { awardXp, buyNode, buySection, sectionCost } from '../src/game/progression';
 import { FAC } from '../src/data/catalog';
 import { K } from '../src/world/grid';
@@ -80,6 +81,110 @@ describe('도로·구역·시설 규칙', () => {
     applyAction(s, 'road', opts({ roadType: 1 }), T(20, 30), T(20, 30));
     expect(m0 - s.money).toBe(18 - 12);
     expect(s.grid.roadType[s.grid.idx(20 + O, 30 + O)]).toBe(1);
+  });
+});
+
+describe('복사·붙여넣기', () => {
+  /** 도로 한 줄 + 양옆 구역 + 풍력 터빈 하나가 있는 작은 구획을 만든다 (원점 T(20,40)) */
+  const sample = (): GameState => {
+    const s = new GameState();
+    s.money = 500000;
+    applyAction(s, 'road', opts(), T(20, 40), T(26, 40)); // 도로 7칸
+    applyAction(s, 'zone', opts({ zone: 'R' }), T(20, 41), T(26, 42)); // 구역 14칸
+    applyAction(s, 'facility', opts({ facility: FAC.WIND }), T(20, 38), T(20, 38)); // 시설 1기
+    return s;
+  };
+
+  it('영역의 도로·구역·시설을 복사한다 (건물은 제외, 구역 종류만)', () => {
+    const s = sample();
+    // 구역 한 칸에 건물이 있어도 복사본에는 구역 종류만 들어간다
+    s.grid.level[s.grid.idx(22 + O, 41 + O)] = 3;
+    const clip = copyArea(s, T(20, 38), T(26, 42))!;
+    expect(clip.w).toBe(7);
+    expect(clip.h).toBe(5);
+    expect(clip.items.filter((i) => i.type === 'road').length).toBe(7);
+    expect(clip.items.filter((i) => i.type === 'zone').length).toBe(14);
+    expect(clip.items.filter((i) => i.type === 'fac').length).toBe(1);
+    expect(copyArea(s, T(40, 10), T(42, 12))).toBeNull(); // 빈 영역
+  });
+
+  it('붙여넣기: 도로·구역·시설이 새 위치에 설치되고 건설비가 청구된다', () => {
+    const s = sample();
+    const clip = copyArea(s, T(20, 38), T(26, 42))!;
+    const hover = T(33, 44); // 클립보드 중앙(3,2)에 맞춤 → 원점 (30,42)
+    const pv = previewPaste(s, clip, hover);
+    expect(pv.tiles.every((t) => t.ok)).toBe(true); // 도로 옆 구역도 접근 가능으로 판정
+    const expected = 7 * 12 + 14 * 6 + 600;
+    expect(pv.cost).toBe(expected);
+    const before = s.money;
+    const r = applyPaste(s, clip, hover);
+    expect(r.placed).toBe(7 + 14 + 1);
+    // 마일스톤 보상이 섞일 수 있으므로 비용은 미리보기와 같거나(보상 전) 보상만큼 적다
+    expect(before - s.money).toBeLessThanOrEqual(expected);
+    const g = s.grid;
+    expect(g.kind[g.idx(30 + O, 44 + O)]).toBe(K.ROAD); // 원점(30,42) + 도로 줄(dy=2)
+    expect(g.kind[g.idx(30 + O, 45 + O)]).toBe(K.RES);
+    expect(g.kind[g.idx(30 + O, 42 + O)]).toBe(K.FAC);
+    // 원본은 그대로
+    expect(g.kind[g.idx(20 + O, 40 + O)]).toBe(K.ROAD);
+    // 여러 번 붙여넣을 수 있다
+    expect(applyPaste(s, clip, T(41, 44)).placed).toBe(22);
+  });
+
+  it('회전하면 크기가 바뀌고 도로 방향도 90° 돌아간다', () => {
+    const s = sample();
+    const clip = copyArea(s, T(20, 38), T(26, 42))!;
+    const rot = rotateClip(clip);
+    expect(rot.w).toBe(clip.h);
+    expect(rot.h).toBe(clip.w);
+    // 가로 도로(7칸)가 세로가 된다: 모든 도로 칸의 dx 가 같다
+    const roads = rot.items.filter((i) => i.type === 'road');
+    expect(new Set(roads.map((i) => i.dx)).size).toBe(1);
+    expect(new Set(roads.map((i) => i.dy)).size).toBe(7);
+    // 4번 돌리면 원래대로
+    const back = rotateClip(rotateClip(rotateClip(rot)));
+    const key = (c: typeof clip): string[] => c.items.map((i) => `${i.type}:${i.dx},${i.dy}`).sort();
+    expect(key(back)).toEqual(key(clip));
+    // 회전본도 정상 붙여넣기
+    const s2 = sample();
+    expect(applyPaste(s2, rot, T(40, 30)).placed).toBe(22);
+  });
+
+  it('막힌 칸·잠긴 구획은 건너뛰고 가능한 것만 붙여넣는다', () => {
+    const s = sample();
+    const clip = copyArea(s, T(20, 38), T(26, 42))!;
+    // 붙여넣을 자리에 이미 도로가 있는 칸이 있다 → 같은 종류 도로는 비용 없이 통과
+    applyAction(s, 'road', opts(), T(30, 44), T(30, 44));
+    // 시설이 놓일 자리를 구역으로 막는다
+    applyAction(s, 'zone', opts({ zone: 'C' }), T(30, 42), T(30, 42));
+    const pv = previewPaste(s, clip, T(33, 44));
+    expect(pv.tiles.some((t) => !t.ok)).toBe(true);
+    // 잠긴 구획 쪽(맵 가장자리)에는 붙여넣을 수 없다
+    const edge = applyPaste(s, clip, { x: 3, y: 3 });
+    expect(edge.ok).toBe(false);
+  });
+
+  it('해금하지 않은 도로·시설 종류는 붙여넣지 못한다', () => {
+    const s = new GameState();
+    s.money = 500000;
+    s.unlocked.add('road_medium');
+    s.unlocked.add('fac_coal');
+    applyAction(s, 'road', opts({ roadType: 1 }), T(20, 40), T(22, 40));
+    applyAction(s, 'facility', opts({ facility: FAC.COAL }), T(20, 41), T(20, 41));
+    const clip = copyArea(s, T(20, 40), T(22, 42))!;
+    s.unlocked.clear(); // 새 게임에서 불러온 것처럼 해금이 없다
+    const r = applyPaste(s, clip, T(40, 40));
+    expect(r.ok).toBe(false);
+  });
+
+  it('자금이 모자라면 가능한 만큼만 붙여넣는다', () => {
+    const s = sample();
+    const clip = copyArea(s, T(20, 38), T(26, 42))!;
+    s.money = 100; // 도로 8칸 정도
+    const r = applyPaste(s, clip, T(33, 44));
+    expect(r.placed).toBeGreaterThan(0);
+    expect(r.placed).toBeLessThan(22);
+    expect(s.money).toBeGreaterThanOrEqual(0);
   });
 });
 

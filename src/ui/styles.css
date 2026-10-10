@@ -997,3 +997,20 @@ kbd {
     max-width: calc(100vw - 16px);
   }
 }
+
+/* 도구가 7개로 늘어 좁은 화면에서는 균등 분할 */
+@media (max-width: 760px) {
+  #toolbar {
+    width: calc(100vw - 16px);
+    gap: 2px;
+  }
+  .tool-btn {
+    width: auto;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 6px 2px 4px;
+  }
+  .tool-btn .nm {
+    font-size: 11px;
+  }
+}
