@@ -111,17 +111,34 @@ export function canPlaceFacility(s: GameState, facId: number, at: Tile): boolean
   return true;
 }
 
-function planFacility(s: GameState, facId: number, at: Tile): Plan {
+/**
+ * 시설 배치: 드래그한 사각형을 시설 크기(w×h) 격자로 채운다.
+ * 한 번 클릭하면(영역이 1칸) 그 칸에 하나, 드래그하면 영역 안에 들어가는 만큼 한꺼번에 깐다.
+ * 각 시설은 독립적으로 설치 가능 여부(빈 땅·물 인접 조건 등)를 판정한다.
+ */
+function planFacility(s: GameState, facId: number, a: Tile, b: Tile): Plan {
   const def = FACILITIES[facId];
   if (!isUnlocked(s, def.node)) return { tiles: [], placeable: [], costs: [], blocked: `${def.name}은(는) 개발 트리에서 해금해야 합니다` };
   const g = s.grid;
-  const ok = canPlaceFacility(s, facId, at);
-  const foot = facilityFootprint(def, at.x, at.y).filter((t) => g.inBounds(t.x, t.y));
-  return {
-    tiles: foot.map((t) => ({ ...t, ok })),
-    placeable: ok ? [at] : [],
-    costs: ok ? [def.cost] : [],
-  };
+  const x0 = Math.min(a.x, b.x);
+  const y0 = Math.min(a.y, b.y);
+  const nx = Math.max(1, Math.floor((Math.abs(b.x - a.x) + 1) / def.w));
+  const ny = Math.max(1, Math.floor((Math.abs(b.y - a.y) + 1) / def.h));
+  const tiles: PreviewTile[] = [];
+  const placeable: Tile[] = [];
+  const costs: number[] = [];
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const at = { x: x0 + i * def.w, y: y0 + j * def.h };
+      const ok = canPlaceFacility(s, facId, at);
+      for (const t of facilityFootprint(def, at.x, at.y)) if (g.inBounds(t.x, t.y)) tiles.push({ ...t, ok });
+      if (ok) {
+        placeable.push(at);
+        costs.push(def.cost);
+      }
+    }
+  }
+  return { tiles, placeable, costs };
 }
 
 /** 철거: 비용은 음수(= 환급). 시설은 통째로 한 번만 환급한다. */
@@ -161,7 +178,7 @@ function makePlan(s: GameState, tool: Tool, o: ToolOptions, a: Tile, b: Tile): P
     case 'zone':
       return planZone(s, o.zone, a, b);
     case 'facility':
-      return planFacility(s, o.facility, b);
+      return planFacility(s, o.facility, a, b);
     case 'demolish':
       return planDemolish(s, a, b);
     default:
@@ -194,7 +211,7 @@ export function previewAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile,
       }
       case 'facility': {
         const def = FACILITIES[o.facility];
-        label = def.name;
+        label = n > 1 ? `${def.name} ${n}기` : def.name;
         if (n === 0 && def.needsWater) label += ' (물 타일에 붙여서 설치)';
         break;
       }

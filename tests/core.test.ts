@@ -83,6 +83,50 @@ describe('도로·구역·시설 규칙', () => {
   });
 });
 
+describe('시설 드래그 설치', () => {
+  it('영역을 드래그하면 시설 크기 격자로 한꺼번에 깔린다', () => {
+    const s = new GameState();
+    s.money = 100000;
+    // 풍력 터빈(1×1): 4×3 영역 → 12기
+    const pv = previewAction(s, 'facility', opts({ facility: FAC.WIND }), T(30, 30), T(33, 32));
+    expect(pv.cost).toBe(12 * 600);
+    const r = applyAction(s, 'facility', opts({ facility: FAC.WIND }), T(30, 30), T(33, 32));
+    expect(r.placed).toBe(12);
+    expect(s.stats.facilities).toBe(12);
+  });
+
+  it('큰 시설은 영역 안에 들어가는 개수만큼 깔린다', () => {
+    const s = new GameState();
+    s.money = 100000;
+    s.unlocked.add('fac_coal');
+    // 석탄 발전소(2×2): 5×4 영역 → 가로 2 × 세로 2 = 4기
+    const r = applyAction(s, 'facility', opts({ facility: FAC.COAL }), T(30, 30), T(34, 33));
+    expect(r.placed).toBe(4);
+    // 영역이 시설보다 작아도 시작 지점에 하나는 깐다
+    const one = applyAction(s, 'facility', opts({ facility: FAC.COAL }), T(40, 30), T(40, 30));
+    expect(one.placed).toBe(1);
+  });
+
+  it('일부 칸이 막혀 있으면 가능한 곳에만 깔리고 미리보기는 칸별로 표시된다', () => {
+    const s = new GameState();
+    s.money = 100000;
+    applyAction(s, 'road', opts(), T(31, 30), T(31, 30)); // 가운데 한 칸 막음
+    const pv = previewAction(s, 'facility', opts({ facility: FAC.WIND }), T(30, 30), T(32, 30));
+    expect(pv.tiles.map((t) => t.ok)).toEqual([true, false, true]);
+    const r = applyAction(s, 'facility', opts({ facility: FAC.WIND }), T(30, 30), T(32, 30));
+    expect(r.placed).toBe(2);
+  });
+
+  it('물가를 따라 드래그하면 취수장이 물 타일 옆에만 깔린다', () => {
+    const s = new GameState();
+    s.money = 100000;
+    // 호수 동쪽 가장자리(x=26) 세로로 드래그
+    const r = applyAction(s, 'facility', opts({ facility: FAC.PUMP }), T(26, 18), T(26, 24));
+    expect(r.placed).toBeGreaterThan(1);
+    expect(r.placed).toBeLessThanOrEqual(7);
+  });
+});
+
 describe('철거 환급', () => {
   it('도로를 철거하면 건설비의 50%를 돌려받는다', () => {
     const s = new GameState();
