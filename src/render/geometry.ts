@@ -56,3 +56,51 @@ export function merge(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   for (const p of parts) p.dispose();
   return g;
 }
+
+export const WIN_OUT = 0.004;
+
+/**
+ * 직육면체 벽면 4면에 창 격자를 만든다.
+ * rows × cols 개의 작은 사각형을 벽에서 살짝 띄워 배치.
+ */
+export function facadeWindows(
+  out: THREE.BufferGeometry[],
+  w: number,
+  d: number,
+  baseY: number,
+  rowYs: number[],
+  cols: number,
+  winW: number,
+  winH: number,
+  ox = 0,
+  oz = 0,
+): void {
+  for (let side = 0; side < 4; side++) {
+    const alongX = side % 2 === 0;
+    const span = alongX ? w : d;
+    const off = (alongX ? d : w) / 2 + WIN_OUT;
+    for (const ry of rowYs) {
+      for (let c = 0; c < cols; c++) {
+        const u = ((c + 0.5) / cols - 0.5) * span * 0.78;
+        const y = baseY + ry;
+        let x = 0;
+        let z = 0;
+        if (side === 0) {
+          x = u;
+          z = off;
+        } else if (side === 1) {
+          x = off;
+          z = u;
+        } else if (side === 2) {
+          x = u;
+          z = -off;
+        } else {
+          x = -off;
+          z = u;
+        }
+        out.push(windowQuad(winW, winH, x + ox, y, z + oz, side));
+      }
+    }
+  }
+}
+

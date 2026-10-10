@@ -80,7 +80,16 @@ const ZONES: { z: ZoneType; key: string }[] = [
   { z: 'I', key: 'I' },
 ];
 
-const CATEGORY_NAME: Record<FacilityCategory, string> = { power: '전력', water: '상수도', sewage: '하수' };
+const CATEGORY_NAME: Record<FacilityCategory, string> = {
+  power: '전력',
+  water: '상수도',
+  sewage: '하수',
+  health: '의료',
+  police: '치안',
+  fire: '소방',
+  park: '공원',
+};
+const CATEGORY_ORDER: FacilityCategory[] = ['power', 'water', 'sewage', 'health', 'police', 'fire', 'park'];
 
 export interface ToolbarUI {
   /** 해금 상태 등이 바뀌었을 수 있을 때 다시 그린다 */
@@ -126,7 +135,7 @@ export function createToolbar(root: HTMLElement, tools: ToolController, state: G
   const facBar = document.createElement('div');
   facBar.className = 'subbar wide';
   const facBtns = new Map<number, HTMLButtonElement>();
-  for (const cat of ['power', 'water', 'sewage'] as FacilityCategory[]) {
+  for (const cat of CATEGORY_ORDER) {
     const group = document.createElement('div');
     group.className = 'fac-group';
     group.innerHTML = `<span class="fac-cat">${CATEGORY_NAME[cat]}</span>`;

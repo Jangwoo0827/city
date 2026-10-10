@@ -1,6 +1,7 @@
 import { Grid } from '../world/grid';
+import type { ServiceCategory } from '../data/catalog';
 import { generateTerrain } from '../world/terrain';
-import { START_MONEY, START_SECTIONS, SECTIONS_PER_SIDE } from '../utils/constants';
+import { SECTION_SIZE, START_MONEY, START_SECTIONS, SECTIONS_PER_SIDE } from '../utils/constants';
 import { START_DEV_POINTS, START_LOAN_LIMIT } from '../data/milestones';
 
 export interface Stats {
@@ -29,6 +30,11 @@ export interface Stats {
   demandI: number;
   income: number;
   expense: number;
+  /** 서비스 커버리지 (주민·건물 가중 평균, 0~1) */
+  covHealth: number;
+  covPolice: number;
+  covFire: number;
+  covPark: number;
   /** 지출 내역 */
   upkeepRoads: number;
   upkeepFacilities: number;
@@ -68,10 +74,17 @@ export const emptyStats = (): Stats => ({
   demandI: 0,
   income: 0,
   expense: 0,
+  covHealth: 0,
+  covPolice: 0,
+  covFire: 0,
+  covPark: 0,
   upkeepRoads: 0,
   upkeepFacilities: 0,
   interest: 0,
 });
+
+/** 서비스 카테고리별 타일 커버리지 (0~1) */
+export type CoverageMaps = Record<ServiceCategory, Float32Array>;
 
 export const DEFAULT_UNLOCKED = (): Set<string> => new Set<string>();
 
@@ -103,6 +116,18 @@ export class GameState {
   loanLimit = START_LOAN_LIMIT;
   /** 구획(16×16칸) 해금 여부, 4×4 */
   sections = new Uint8Array(SECTIONS_PER_SIDE * SECTIONS_PER_SIDE);
+
+  // ── 서비스 (저장하지 않는 계산 결과) ──
+  cov: CoverageMaps = {
+    health: new Float32Array(this.grid.count),
+    police: new Float32Array(this.grid.count),
+    fire: new Float32Array(this.grid.count),
+    park: new Float32Array(this.grid.count),
+  };
+  /** 서비스 시설(앵커 인덱스)별 이용 인구 / 효율 */
+  serviceLoad = new Map<number, { pop: number; eff: number }>();
+  /** 불타는 건물: 타일 인덱스 → 남은 연소 틱 */
+  fires = new Map<number, number>();
 
   // ── 상하수도 환경 ──
   /** 지하수 저장량 0..1 */
@@ -151,8 +176,8 @@ export class GameState {
   /** 해당 타일이 해금된 구획 안에 있는가 */
   isUnlockedAt(x: number, y: number): boolean {
     if (!this.grid.inBounds(x, y)) return false;
-    const sx = Math.floor(x / 16);
-    const sy = Math.floor(y / 16);
+    const sx = Math.floor(x / SECTION_SIZE);
+    const sy = Math.floor(y / SECTION_SIZE);
     return this.sections[sy * SECTIONS_PER_SIDE + sx] === 1;
   }
 
@@ -177,6 +202,7 @@ export class GameState {
     this.loanLimit = START_LOAN_LIMIT;
     this.groundwater = 1;
     this.waterPollution = 0;
+    this.fires.clear();
     this.resetSections();
     this.markAllDirty();
     this.emit('reset');

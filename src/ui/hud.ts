@@ -22,6 +22,13 @@ const SPEEDS: { speed: number; label: string; title: string }[] = [
   { speed: 3, label: '▶▶▶', title: '속도 ×3' },
 ];
 
+const COVERAGE_DEFS: { mode: ServiceMode; icon: string; name: string; key: 'covHealth' | 'covPolice' | 'covFire' | 'covPark' }[] = [
+  { mode: 'health', icon: '🏥', name: '의료', key: 'covHealth' },
+  { mode: 'police', icon: '👮', name: '치안', key: 'covPolice' },
+  { mode: 'fire', icon: '🚒', name: '소방', key: 'covFire' },
+  { mode: 'park', icon: '🌳', name: '공원', key: 'covPark' },
+];
+
 const faceFor = (h: number): string => (h >= 75 ? '😄' : h >= 50 ? '🙂' : h >= 30 ? '😐' : '😠');
 const colorFor = (h: number): string => (h >= 60 ? 'var(--good)' : h >= 35 ? '#f2c94c' : 'var(--bad)');
 
@@ -61,6 +68,7 @@ export class Hud {
   private readonly xpFill: HTMLElement;
   private readonly utilBtns = new Map<ServiceMode, HTMLButtonElement>();
   private overlayMode: ServiceMode = 'none';
+  private readonly covBtns = new Map<ServiceMode, HTMLButtonElement>();
   private readonly speedBtns = new Map<number, HTMLButtonElement>();
   private readonly rci: Record<'R' | 'C' | 'I', HTMLElement>;
   private readonly toasts: HTMLElement;
@@ -178,6 +186,23 @@ export class Hud {
     }
     this.utilDefs = defs;
 
+    // 서비스 커버리지 오버레이 (의료/치안/소방/공원)
+    const covGrid = document.createElement('div');
+    covGrid.className = 'cov-grid';
+    for (const d of COVERAGE_DEFS) {
+      const b = document.createElement('button');
+      b.className = 'util-cov';
+      b.title = `${d.name} 커버리지 오버레이 (초록 = 충분, 빨강 = 부족)`;
+      b.addEventListener('click', () => {
+        this.overlayMode = this.overlayMode === d.mode ? 'none' : d.mode;
+        hooks.onOverlay(this.overlayMode);
+        this.update();
+      });
+      covGrid.appendChild(b);
+      this.covBtns.set(d.mode, b);
+    }
+    utils.appendChild(covGrid);
+
     this.toasts = document.createElement('div');
     this.toasts.id = 'toasts';
 
@@ -250,6 +275,13 @@ export class Hud {
       const short = b > a + 1e-6;
       const btn = this.utilBtns.get(d.mode)!;
       btn.innerHTML = `<span>${d.icon} ${d.name}</span><b class="${short ? 'neg' : ''}">${b.toFixed(1)} / ${a.toFixed(1)}</b>`;
+      btn.classList.toggle('active', this.overlayMode === d.mode);
+    }
+
+    for (const d of COVERAGE_DEFS) {
+      const btn = this.covBtns.get(d.mode)!;
+      const v = st[d.key];
+      btn.innerHTML = `<span>${d.icon}</span><b class="${v < 0.5 && st.pop > 0 ? 'neg' : ''}">${Math.round(v * 100)}%</b>`;
       btn.classList.toggle('active', this.overlayMode === d.mode);
     }
 

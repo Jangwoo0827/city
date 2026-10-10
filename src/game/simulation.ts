@@ -15,6 +15,8 @@ import { computeAccess } from '../world/roads';
 import { buildingStats, facilityList } from '../world/buildings';
 import { GameState } from './state';
 import { computeNetworks, updateEnvironment } from './network';
+import { computeCoverage } from './coverage';
+import { updateFires } from './events';
 import { computeDemand } from './demand';
 import { computeEconomy } from './economy';
 import { awardXp } from './progression';
@@ -52,6 +54,7 @@ export function refreshStats(s: GameState): void {
     computeAccess(g);
   }
   computeNetworks(s);
+  computeCoverage(s);
   computePollution(s);
 
   let pop = 0;
@@ -65,6 +68,13 @@ export function refreshStats(s: GameState): void {
   let upkeepRoads = 0;
   let resLevels = 0;
   let pollutedLevels = 0;
+  // 서비스 커버리지 가중 평균용 (의료·경찰·소방은 주민 수, 공원은 건물 레벨)
+  let popW = 0;
+  let covH = 0;
+  let covP = 0;
+  let covF = 0;
+  let parkW = 0;
+  let covPk = 0;
 
   for (let i = 0; i < g.count; i++) {
     const k = g.kind[i];
@@ -80,7 +90,13 @@ export function refreshStats(s: GameState): void {
       pop += b.pop;
       if (k === K.COM) jobsC += b.jobs;
       else if (k === K.IND) jobsI += b.jobs;
+      parkW += g.level[i];
+      covPk += g.level[i] * s.cov.park[i];
       if (k === K.RES) {
+        popW += b.pop;
+        covH += b.pop * s.cov.health[i];
+        covP += b.pop * s.cov.police[i];
+        covF += b.pop * s.cov.fire[i];
         resLevels += g.level[i];
         pollutedLevels += g.level[i] * Math.min(1, s.pollution[i]);
       }
@@ -101,6 +117,10 @@ export function refreshStats(s: GameState): void {
   st.facilities = facs.length;
   st.upkeepRoads = upkeepRoads;
   st.upkeepFacilities = upkeepFac;
+  st.covHealth = popW > 0 ? covH / popW : 0;
+  st.covPolice = popW > 0 ? covP / popW : 0;
+  st.covFire = popW > 0 ? covF / popW : 0;
+  st.covPark = parkW > 0 ? covPk / parkW : 0;
   st.poweredRatio = buildings > 0 ? poweredB / buildings : 1;
   st.wateredRatio = buildings > 0 ? wateredB / buildings : 1;
   st.sewagedRatio = buildings > 0 ? sewagedB / buildings : 1;
@@ -109,8 +129,12 @@ export function refreshStats(s: GameState): void {
   const polluted = resLevels > 0 ? pollutedLevels / resLevels : 0;
   const unemployment = st.workers > 0 ? Math.max(0, st.workers - st.jobs) / st.workers : 0;
   const surplus = st.jobs > st.workers ? Math.min(1, (st.jobs - st.workers) / Math.max(1, st.jobs)) : 0;
+  const crimeScale = clamp((pop - HAPPINESS.crimeStartPop) / HAPPINESS.crimeRamp, 0, 1);
   s.happinessTarget = clamp(
-    HAPPINESS.base -
+    HAPPINESS.base +
+      HAPPINESS.healthBonus * st.covHealth +
+      HAPPINESS.parkBonus * st.covPark -
+      HAPPINESS.crimePenalty * crimeScale * (1 - st.covPolice) -
       HAPPINESS.noPowerPenalty * (1 - st.poweredRatio) -
       HAPPINESS.noWaterPenalty * (1 - st.wateredRatio) -
       HAPPINESS.noSewagePenalty * (1 - st.sewagedRatio) -
@@ -180,6 +204,7 @@ export function tick(s: GameState): void {
   refreshStats(s);
   const xp = grow(s);
   updateEnvironment(s);
+  updateFires(s);
   if (s.waterPollution > 0.3 && !s.waterWarned) {
     s.waterWarned = true;
     s.toast('⚠️ 수질이 오염되고 있습니다. 폐수 처리장을 지으세요 (개발 트리)', 'bad');

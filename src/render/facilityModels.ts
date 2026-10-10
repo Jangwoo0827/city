@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { FAC } from '../data/catalog';
-import { box, boxOnGround, cylinder, merge, pyramidRoof, windowQuad } from './geometry';
+import { box, boxOnGround, cylinder, facadeWindows, merge, pyramidRoof, windowQuad } from './geometry';
 import type { BuildingModel } from './models';
 
 /** 풍력 터빈 (1×1, 원점 = 타일 중심) */
@@ -105,6 +105,117 @@ function treatment(): BuildingModel {
   return { body: merge(parts), windows: merge(win) };
 }
 
+/** 빨간 십자 (평면 위 y 높이에 가로 방향 십자, 크기 s) */
+function redCross(parts: THREE.BufferGeometry[], x: number, y: number, z: number, s: number): void {
+  parts.push(box(s, 0.02, s * 0.3, x, y, z, 0xd9453c));
+  parts.push(box(s * 0.3, 0.02, s, x, y, z, 0xd9453c));
+}
+
+/** 나무 한 그루 (줄기 + 원뿔형 수관) */
+function tree(parts: THREE.BufferGeometry[], x: number, z: number, baseY: number, scale = 1, color = 0x3f9d4f): void {
+  parts.push(cylinder(0.035 * scale, 0.14 * scale, x, baseY, z, 0x7a5a3a, 6));
+  parts.push(cylinder(0.15 * scale, 0.3 * scale, x, baseY + 0.12 * scale, z, color, 7, 0.02 * scale));
+}
+
+/** 진료소 (2×2) */
+function clinic(): BuildingModel {
+  const parts: THREE.BufferGeometry[] = [];
+  parts.push(box(1.7, 0.04, 1.6, 0, 0.02, 0, 0xcfd6dc));
+  parts.push(boxOnGround(1.25, 0.5, 0.95, -0.1, 0.04, -0.1, 0xeaf2f8));
+  parts.push(boxOnGround(1.3, 0.06, 1.0, -0.1, 0.54, -0.1, 0x6fb1d6));
+  parts.push(boxOnGround(0.45, 0.32, 0.5, 0.58, 0.04, 0.35, 0xdbe6ee));
+  redCross(parts, -0.1, 0.61, -0.1, 0.42);
+  parts.push(boxOnGround(0.28, 0.03, 0.12, -0.1, 0.04, 0.4, 0x6fb1d6)); // 입구 차양
+  const win: THREE.BufferGeometry[] = [];
+  facadeWindows(win, 1.25, 0.95, 0.04, [0.2, 0.38], 3, 0.14, 0.1, -0.1, -0.1);
+  return { body: merge(parts), windows: merge(win) };
+}
+
+/** 병원 (3×3) */
+function hospital(): BuildingModel {
+  const parts: THREE.BufferGeometry[] = [];
+  parts.push(box(2.7, 0.04, 2.7, 0, 0.02, 0, 0xcfd6dc));
+  parts.push(boxOnGround(2.0, 0.85, 1.3, 0, 0.04, 0.5, 0xeef3f7));
+  parts.push(boxOnGround(2.04, 0.05, 1.34, 0, 0.89, 0.5, 0x6fb1d6));
+  parts.push(boxOnGround(0.9, 1.5, 0.9, -0.5, 0.04, -0.7, 0xe3ecf2));
+  parts.push(boxOnGround(0.94, 0.05, 0.94, -0.5, 1.54, -0.7, 0x6fb1d6));
+  // 옥상 헬리패드
+  parts.push(cylinder(0.3, 0.03, 0.55, 0.94, 0.5, 0x4d5560, 20));
+  parts.push(box(0.05, 0.012, 0.28, 0.46, 0.972, 0.5, 0xf4f4f4));
+  parts.push(box(0.05, 0.012, 0.28, 0.64, 0.972, 0.5, 0xf4f4f4));
+  parts.push(box(0.2, 0.012, 0.05, 0.55, 0.972, 0.5, 0xf4f4f4));
+  redCross(parts, -0.5, 1.6, -0.7, 0.4);
+  parts.push(boxOnGround(0.5, 0.16, 0.3, 0.55, 0.04, 1.28, 0xdbe6ee)); // 응급 출입구
+  const win: THREE.BufferGeometry[] = [];
+  facadeWindows(win, 2.0, 1.3, 0.04, [0.22, 0.45, 0.68], 5, 0.14, 0.1, 0, 0.5);
+  facadeWindows(win, 0.9, 0.9, 0.04, [0.25, 0.5, 0.75, 1.0, 1.25], 3, 0.12, 0.1, -0.5, -0.7);
+  return { body: merge(parts), windows: merge(win) };
+}
+
+/** 경찰서 (2×2) */
+function police(): BuildingModel {
+  const parts: THREE.BufferGeometry[] = [];
+  parts.push(box(1.7, 0.04, 1.6, 0, 0.02, 0, 0x9aa1a8));
+  parts.push(boxOnGround(1.3, 0.62, 1.0, 0, 0.04, -0.05, 0x4a6fa8));
+  parts.push(boxOnGround(1.34, 0.05, 1.04, 0, 0.66, -0.05, 0x2f4672));
+  parts.push(boxOnGround(1.3, 0.07, 1.0, 0, 0.3, -0.05, 0xf1f3f5)); // 흰 띠
+  parts.push(cylinder(0.07, 0.08, 0.38, 0.71, 0.0, 0xd9453c, 8)); // 경광등
+  parts.push(cylinder(0.07, 0.08, 0.5, 0.71, 0.0, 0x3b82f6, 8));
+  parts.push(cylinder(0.012, 0.5, -0.5, 0.04, 0.6, 0xc9d1dc, 5)); // 깃대
+  parts.push(boxOnGround(0.22, 0.12, 0.012, -0.39, 0.46, 0.6, 0x3b82f6));
+  parts.push(boxOnGround(0.34, 0.2, 0.26, 0.45, 0.04, 0.55, 0x2f4672)); // 차고 한 칸
+  const win: THREE.BufferGeometry[] = [];
+  facadeWindows(win, 1.3, 1.0, 0.04, [0.18, 0.48], 3, 0.14, 0.09, 0, -0.05);
+  return { body: merge(parts), windows: merge(win) };
+}
+
+/** 소방서 (2×2) */
+function fireStation(): BuildingModel {
+  const parts: THREE.BufferGeometry[] = [];
+  parts.push(box(1.7, 0.04, 1.6, 0, 0.02, 0, 0x9aa1a8));
+  parts.push(boxOnGround(1.4, 0.58, 0.95, -0.1, 0.04, -0.1, 0xd9453c));
+  parts.push(boxOnGround(1.44, 0.05, 0.99, -0.1, 0.62, -0.1, 0x8a2a24));
+  // 차고 문 3개
+  for (let k = 0; k < 3; k++) parts.push(boxOnGround(0.3, 0.34, 0.02, -0.4 + k * 0.34, 0.04, 0.38, 0xf1f3f5));
+  // 훈련 탑
+  parts.push(boxOnGround(0.32, 1.1, 0.32, 0.62, 0.04, -0.4, 0xc23a32));
+  parts.push(boxOnGround(0.36, 0.05, 0.36, 0.62, 1.14, -0.4, 0x8a2a24));
+  parts.push(cylinder(0.02, 0.2, 0.62, 1.19, -0.4, 0xc9d1dc, 5));
+  const win: THREE.BufferGeometry[] = [];
+  facadeWindows(win, 1.4, 0.95, 0.4, [0.1], 4, 0.12, 0.08, -0.1, -0.1);
+  facadeWindows(win, 0.32, 0.32, 0.04, [0.5, 0.8], 1, 0.1, 0.1, 0.62, -0.4);
+  return { body: merge(parts), windows: merge(win) };
+}
+
+/** 소공원 (1×1) */
+function parkSmall(): BuildingModel {
+  const parts: THREE.BufferGeometry[] = [];
+  parts.push(box(0.94, 0.03, 0.94, 0, 0.015, 0, 0x6fbf6a));
+  parts.push(box(0.14, 0.035, 0.94, 0, 0.018, 0, 0xd8cfae)); // 산책로
+  tree(parts, -0.3, -0.28, 0.03, 1.1);
+  tree(parts, 0.3, 0.25, 0.03, 0.9, 0x4aa85a);
+  tree(parts, 0.28, -0.3, 0.03, 0.8, 0x2f8f4a);
+  parts.push(boxOnGround(0.2, 0.05, 0.06, -0.28, 0.03, 0.3, 0x8a5a3a)); // 벤치
+  return { body: merge(parts), windows: null };
+}
+
+/** 대공원 (2×2) */
+function parkLarge(): BuildingModel {
+  const parts: THREE.BufferGeometry[] = [];
+  parts.push(box(1.94, 0.03, 1.94, 0, 0.015, 0, 0x6fbf6a));
+  parts.push(box(0.16, 0.035, 1.94, 0, 0.018, 0, 0xd8cfae));
+  parts.push(box(1.94, 0.035, 0.16, 0, 0.018, 0, 0xd8cfae));
+  parts.push(cylinder(0.3, 0.02, -0.55, 0.03, -0.55, 0x4ea3dd, 18)); // 연못
+  const trees: [number, number, number, number][] = [
+    [0.55, -0.6, 1.2, 0x3f9d4f], [0.8, -0.3, 0.9, 0x2f8f4a], [-0.7, 0.55, 1.1, 0x4aa85a],
+    [0.6, 0.65, 1.3, 0x3f9d4f], [-0.35, 0.8, 0.8, 0x2f8f4a], [0.25, 0.3, 0.9, 0x4aa85a], [-0.85, -0.2, 1.0, 0x3f9d4f],
+  ];
+  for (const [x, z, sc, c] of trees) tree(parts, x, z, 0.03, sc, c);
+  parts.push(boxOnGround(0.24, 0.05, 0.07, 0.3, 0.03, -0.3, 0x8a5a3a));
+  parts.push(boxOnGround(0.07, 0.05, 0.24, -0.3, 0.03, 0.35, 0x8a5a3a));
+  return { body: merge(parts), windows: null };
+}
+
 export function buildFacilityModels(): Map<number, BuildingModel> {
   const m = new Map<number, BuildingModel>();
   m.set(FAC.WIND, wind());
@@ -114,5 +225,11 @@ export function buildFacilityModels(): Map<number, BuildingModel> {
   m.set(FAC.WELL, well());
   m.set(FAC.OUTLET, outlet());
   m.set(FAC.TREATMENT, treatment());
+  m.set(FAC.CLINIC, clinic());
+  m.set(FAC.HOSPITAL, hospital());
+  m.set(FAC.POLICE, police());
+  m.set(FAC.FIRE, fireStation());
+  m.set(FAC.PARK_S, parkSmall());
+  m.set(FAC.PARK_L, parkLarge());
   return m;
 }

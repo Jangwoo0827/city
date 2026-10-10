@@ -9,6 +9,10 @@ const BAD = new THREE.Color(COLORS.badTile);
 /** 호버·드래그 미리보기용 타일 하이라이트 (초록 = 설치 가능, 빨강 = 불가) */
 export class Overlay {
   readonly mesh: THREE.InstancedMesh;
+  /** 서비스 건물 설치/선택 시 반경을 보여주는 링 */
+  readonly range: THREE.Group;
+  private rangeRing: THREE.Mesh | null = null;
+  private rangeRadius = 0;
   private readonly m = new THREE.Matrix4();
 
   constructor() {
@@ -26,6 +30,31 @@ export class Overlay {
     this.mesh.renderOrder = 10;
     this.mesh.count = 0;
     this.mesh.name = 'overlay';
+    this.range = new THREE.Group();
+    this.range.visible = false;
+    this.range.renderOrder = 12;
+  }
+
+  /** (cx, cz) 월드 좌표 중심으로 반경 r 링 표시. r<=0 이면 숨김 */
+  setRange(cx: number, cz: number, r: number): void {
+    if (r <= 0) {
+      this.range.visible = false;
+      return;
+    }
+    if (!this.rangeRing || this.rangeRadius !== r) {
+      if (this.rangeRing) {
+        this.range.remove(this.rangeRing);
+        this.rangeRing.geometry.dispose();
+      }
+      const geo = new THREE.RingGeometry(r - 0.1, r + 0.05, 72).rotateX(-Math.PI / 2);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.8, depthWrite: false, depthTest: false });
+      this.rangeRing = new THREE.Mesh(geo, mat);
+      this.rangeRing.renderOrder = 12;
+      this.range.add(this.rangeRing);
+      this.rangeRadius = r;
+    }
+    this.range.position.set(cx, 0.14, cz);
+    this.range.visible = true;
   }
 
   set(preview: Preview | null): void {

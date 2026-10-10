@@ -1,6 +1,7 @@
 import { GameState } from '../game/state';
 import { Tool, applyAction, previewAction } from '../game/actions';
 import { Tile, sectionIndex } from '../world/grid';
+import { FACILITIES } from '../data/catalog';
 import { isSectionAdjacent, sectionCost } from '../game/progression';
 import { GameView } from '../render/scene';
 import { ToolController } from './toolbar';
@@ -251,6 +252,7 @@ export class InputController {
     else if (this.buildStart === null) this.hover = null;
 
     if (!this.hover) {
+      this.view.showPlacementRange(0, 0, 0);
       this.view.overlay.set(null);
       this.tip.hide();
       return;
@@ -265,6 +267,14 @@ export class InputController {
         this.tip.show('🔒 잠긴 구획 (맞닿은 구획부터 해금)', clientX, clientY, false);
       }
       return;
+    }
+    // 서비스 시설 설치 중이면 반경 링 표시
+    if (this.tools.tool === 'facility') {
+      const def = FACILITIES[this.tools.facility];
+      const r = def.radius ?? 0;
+      this.view.showPlacementRange(this.hover.x + def.w / 2, this.hover.y + def.h / 2, r);
+    } else {
+      this.view.showPlacementRange(0, 0, 0);
     }
     const a = this.buildStart ?? this.hover;
     const pv = previewAction(this.state, this.tools.tool, this.tools.options(), a, this.hover);

@@ -589,7 +589,7 @@ kbd {
     width: 58px;
   }
   #rci {
-    top: 252px;
+    top: 282px;
     bottom: auto;
     left: 8px;
     transform: scale(0.82);
@@ -910,5 +910,43 @@ kbd {
   .mtable th:nth-child(n + 6),
   .mtable td:nth-child(n + 6) {
     display: none;
+  }
+}
+
+/* ── 서비스 커버리지 버튼 ── */
+.cov-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.util-cov {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+.util-cov:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.util-cov.active {
+  border-color: var(--accent);
+  background: rgba(95, 176, 255, 0.18);
+}
+.util-cov b {
+  font-variant-numeric: tabular-nums;
+}
+.util-cov b.neg {
+  color: var(--bad);
+}
+@media (min-width: 761px) {
+  #utils {
+    bottom: 160px;
   }
 }

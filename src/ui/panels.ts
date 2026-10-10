@@ -1,6 +1,7 @@
 import { GameState } from '../game/state';
 import { taxMultiplier } from '../game/economy';
 import { effectiveCapacity, powerUse, sewageUse, waterUse } from '../game/network';
+import { isServiceCategory } from '../data/catalog';
 import { GROWTH, MAX_LEVEL } from '../utils/constants';
 import { ROAD_TYPES } from '../data/catalog';
 import { K, Tile, isZoneKind } from '../world/grid';
@@ -39,6 +40,8 @@ export interface Footprint {
   y: number;
   w: number;
   h: number;
+  /** 서비스 시설이면 반경 */
+  radius?: number;
 }
 
 const yes = (v: boolean, good = '정상', bad = '없음'): string =>
@@ -75,7 +78,7 @@ export class InfoPanel {
   footprint(): Footprint | null {
     if (!this.tile) return null;
     const f = facilityAt(this.state.grid, this.tile.x, this.tile.y);
-    if (f) return { x: f.x, y: f.y, w: f.def.w, h: f.def.h };
+    if (f) return { x: f.x, y: f.y, w: f.def.w, h: f.def.h, radius: f.def.radius ?? 0 };
     return { x: this.tile.x, y: this.tile.y, w: 1, h: 1 };
   }
 
@@ -136,6 +139,10 @@ export class InfoPanel {
       row('전력', yes(powered, '공급 중', '끊김'));
       row('상수도', yes(watered, '공급 중', '끊김'));
       row('하수', yes(sewered, '처리 중', '끊김'));
+      const pct = (v: number): string => `${Math.round(v * 100)}%`;
+      row('의료 / 치안 / 소방', `${pct(s.cov.health[i])} / ${pct(s.cov.police[i])} / ${pct(s.cov.fire[i])}`);
+      row('공원', pct(s.cov.park[i]));
+      if (s.fires.has(i)) row('상태', '<span class="no">🔥 화재 진행 중</span>');
       if (zt === 'R' && lv > 0) {
         const pol = Math.min(1, s.pollution[i]);
         row('오염도', pol > 0.05 ? `<span class="no">${Math.round(pol * 100)}%</span>` : '<span class="ok">깨끗함</span>');
@@ -154,11 +161,21 @@ export class InfoPanel {
     } else if (k === K.FAC) {
       const f = facilityAt(g, x, y)!;
       title = f.def.name;
-      const linked = g.powered[i] === 1 || g.watered[i] === 1 || g.sewered[i] === 1;
-      const cap = effectiveCapacity(s, f.def.id);
-      const unit = f.def.category === 'power' ? '전력' : f.def.category === 'water' ? '급수량' : '하수 처리량';
-      row(unit, `${cap.toFixed(1)} / ${f.def.capacity}`);
-      row('도로 연결', yes(linked, '연결됨', '도로에 붙여 설치하세요'));
+      if (isServiceCategory(f.def.category)) {
+        const load = s.serviceLoad.get(g.idx(f.x, f.y));
+        row('서비스 반경', `${f.def.radius}칸`);
+        if (f.def.capacity > 0) {
+          row('수용 인원', `${f.def.capacity}명`);
+          row('이용 대상', `${load?.pop ?? 0}명`);
+          row('효율', load && load.eff < 1 ? `<span class="no">${Math.round(load.eff * 100)}% (과부하)</span>` : '<span class="ok">100%</span>');
+        }
+      } else {
+        const linked = g.powered[i] === 1 || g.watered[i] === 1 || g.sewered[i] === 1;
+        const cap = effectiveCapacity(s, f.def.id);
+        const unit = f.def.category === 'power' ? '전력' : f.def.category === 'water' ? '급수량' : '하수 처리량';
+        row(unit, `${cap.toFixed(1)} / ${f.def.capacity}`);
+        row('도로 연결', yes(linked, '연결됨', '도로에 붙여 설치하세요'));
+      }
       row('유지비', `₩${f.def.upkeep}/일`);
       if (f.def.id === 5) row('지하수', `${Math.round(s.groundwater * 100)}%`);
       if (f.def.id === 3) row('수질 오염', `${Math.round(s.waterPollution * 100)}%`);

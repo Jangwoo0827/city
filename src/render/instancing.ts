@@ -10,7 +10,8 @@ import { box, merge } from './geometry';
 import { BuildingModel, ModelKey, buildAllModels, modelKey } from './models';
 
 const CAP = GRID_SIZE * GRID_SIZE;
-const FAC_CAP = 256;
+/** 모델별 인스턴스 버퍼의 시작 용량 (필요하면 두 배씩 늘린다) */
+const INIT_CAP = 256;
 const SIDEWALK = 0xbdb9ad;
 const ASPHALT = 0x3d4148;
 const ASPHALT_DARK = 0x353a41;
@@ -21,7 +22,7 @@ const ROAD_H = 0.065;
 const WINDOW_DAY = new THREE.Color(0x7d9cb8);
 const WINDOW_NIGHT = new THREE.Color(0xffd88a);
 
-export type ServiceMode = 'none' | 'power' | 'water' | 'sewage';
+export type ServiceMode = 'none' | 'power' | 'water' | 'sewage' | 'health' | 'police' | 'fire' | 'park';
 
 /** 이웃 연결 비트마스크(북1 동2 남4 서8)와 도로 종류로 도로 타일 모양을 생성 */
 function buildRoadGeometry(mask: number, type: RoadTypeDef): THREE.BufferGeometry {
@@ -63,6 +64,12 @@ function buildRoadGeometry(mask: number, type: RoadTypeDef): THREE.BufferGeometr
   return merge(parts);
 }
 
+/** 커버리지 0~1 → 빨강 · 노랑 · 초록 */
+function heat(c: THREE.Color, v: number): THREE.Color {
+  const t = clamp(v, 0, 1);
+  return t < 0.5 ? c.setRGB(0.94, 0.27 + t * 1.2, 0.2) : c.setRGB(0.94 - (t - 0.5) * 1.5, 0.87, 0.2 + (t - 0.5) * 0.3);
+}
+
 function makeInstanced(
   geo: THREE.BufferGeometry,
   mat: THREE.Material,
@@ -91,6 +98,9 @@ export class CityMeshes {
   private readonly sectionMeshes: THREE.Mesh[] = [];
   private readonly sectionEdges: THREE.LineSegments[] = [];
   private readonly serviceMesh: THREE.InstancedMesh;
+  private readonly fireOuter: THREE.InstancedMesh;
+  private readonly fireInner: THREE.InstancedMesh;
+  private lastFireCount = 0;
   private serviceMode: ServiceMode = 'none';
   private serviceStamp = -1;
 
@@ -112,7 +122,7 @@ export class CityMeshes {
     for (const type of ROAD_TYPES) {
       const row: THREE.InstancedMesh[] = [];
       for (let mask = 0; mask < 16; mask++) {
-        const mesh = makeInstanced(buildRoadGeometry(mask, type), roadMat, CAP, `road-${type.id}-${mask}`);
+        const mesh = makeInstanced(buildRoadGeometry(mask, type), roadMat, INIT_CAP, `road-${type.id}-${mask}`);
         mesh.receiveShadow = true;
         row.push(mesh);
         this.group.add(mesh);
@@ -130,14 +140,13 @@ export class CityMeshes {
     const bodyMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     const models: Map<ModelKey, BuildingModel> = buildAllModels();
     for (const [key, model] of models) {
-      const cap = key.startsWith(`${K.FAC}:`) ? FAC_CAP : CAP;
-      const body = makeInstanced(model.body, bodyMat, cap, `bld-${key}`);
+      const body = makeInstanced(model.body, bodyMat, INIT_CAP, `bld-${key}`);
       body.castShadow = true;
       body.receiveShadow = true;
       this.bodyMeshes.set(key, body);
       this.group.add(body);
       if (model.windows) {
-        const win = makeInstanced(model.windows, this.windowMat, cap, `win-${key}`);
+        const win = makeInstanced(model.windows, this.windowMat, INIT_CAP, `win-${key}`);
         this.windowMeshes.set(key, win);
         this.group.add(win);
       }
@@ -152,6 +161,11 @@ export class CityMeshes {
     );
     this.serviceMesh.renderOrder = 5;
     this.group.add(this.serviceMesh);
+
+    // 화재 불꽃 (겉 불꽃 + 속 불꽃)
+    this.fireOuter = makeInstanced(new THREE.ConeGeometry(0.2, 0.62, 7), new THREE.MeshBasicMaterial({ color: 0xff5a1f }), 256, 'fire-outer');
+    this.fireInner = makeInstanced(new THREE.ConeGeometry(0.11, 0.38, 7), new THREE.MeshBasicMaterial({ color: 0xffd23f }), 256, 'fire-inner');
+    this.group.add(this.fireOuter, this.fireInner);
 
     this.buildSections();
   }
@@ -250,6 +264,7 @@ export class CityMeshes {
       s.dirty.buildings = false;
       if (this.rebuildBuildings(time)) s.dirty.buildings = true; // 애니메이션 진행 중
     }
+    this.updateFlames(time);
     if (this.serviceMode !== 'none') {
       const stamp = s.tick * 1000 + s.stats.buildings;
       if (stamp !== this.serviceStamp) {
@@ -259,9 +274,47 @@ export class CityMeshes {
     }
   }
 
+  /** 인스턴스 버퍼 용량이 모자라면 두 배로 키운 새 메시로 교체한다 (기존 데이터 복사) */
+  private grow(mesh: THREE.InstancedMesh, needed: number): THREE.InstancedMesh {
+    const cap = mesh.instanceMatrix.count;
+    if (needed <= cap) return mesh;
+    let ncap = cap;
+    while (ncap < needed) ncap *= 2;
+    ncap = Math.min(ncap, CAP);
+    const n = new THREE.InstancedMesh(mesh.geometry, mesh.material, ncap);
+    n.frustumCulled = false;
+    n.castShadow = mesh.castShadow;
+    n.receiveShadow = mesh.receiveShadow;
+    n.name = mesh.name;
+    n.renderOrder = mesh.renderOrder;
+    n.count = mesh.count;
+    (n.instanceMatrix.array as Float32Array).set(mesh.instanceMatrix.array as Float32Array);
+    if (mesh.instanceColor) {
+      n.setColorAt(0, this.tmpColor.setScalar(1));
+      (n.instanceColor!.array as Float32Array).set(mesh.instanceColor.array as Float32Array);
+    }
+    this.group.remove(mesh);
+    this.group.add(n);
+    mesh.dispose();
+    return n;
+  }
+
   private rebuildRoads(): void {
     const g = this.state.grid;
     const counts = ROAD_TYPES.map(() => new Array<number>(16).fill(0));
+    // 1) 개수를 세어 용량 확보
+    for (let y = 0; y < g.size; y++) {
+      for (let x = 0; x < g.size; x++) {
+        const i = g.idx(x, y);
+        if (g.kind[i] !== K.ROAD) continue;
+        counts[Math.min(g.roadType[i], ROAD_TYPES.length - 1)][roadMask(g, x, y)]++;
+      }
+    }
+    for (let t = 0; t < ROAD_TYPES.length; t++) {
+      for (let mask = 0; mask < 16; mask++) this.roadMeshes[t][mask] = this.grow(this.roadMeshes[t][mask], counts[t][mask]);
+    }
+    counts.forEach((row) => row.fill(0));
+    // 2) 채우기
     for (let y = 0; y < g.size; y++) {
       for (let x = 0; x < g.size; x++) {
         const i = g.idx(x, y);
@@ -302,13 +355,59 @@ export class CityMeshes {
     if (this.zoneMesh.instanceColor) this.zoneMesh.instanceColor.needsUpdate = true;
   }
 
-  /** 전력/수도/하수 공급 상태 오버레이: 초록 = 공급, 빨강 = 끊김 */
+  /** 불타는 건물 위의 불꽃 (매 프레임 출렁임) */
+  private updateFlames(time: number): void {
+    const fires = this.state.fires;
+    if (fires.size === 0 && this.lastFireCount === 0) return;
+    const g = this.state.grid;
+    let n = 0;
+    for (const i of fires.keys()) {
+      if (n >= 256) break;
+      const x = i % g.size;
+      const y = (i / g.size) | 0;
+      const t = time * 9 + i;
+      const pulse = 1 + 0.25 * Math.sin(t) + 0.1 * Math.sin(t * 2.3);
+      const baseY = 0.2 + g.level[i] * 0.18;
+      this.dummy.position.set(x + 0.5, baseY + 0.3 * pulse, y + 0.5);
+      this.dummy.rotation.set(0, t * 0.3, 0);
+      this.dummy.scale.set(pulse * 0.95, pulse, pulse * 0.95);
+      this.dummy.updateMatrix();
+      this.fireOuter.setMatrixAt(n, this.dummy.matrix);
+      this.dummy.position.y = baseY + 0.2 * pulse;
+      this.dummy.scale.set(pulse * 0.9, pulse * 1.1, pulse * 0.9);
+      this.dummy.updateMatrix();
+      this.fireInner.setMatrixAt(n, this.dummy.matrix);
+      n++;
+    }
+    this.fireOuter.count = n;
+    this.fireInner.count = n;
+    this.fireOuter.instanceMatrix.needsUpdate = true;
+    this.fireInner.instanceMatrix.needsUpdate = true;
+    this.lastFireCount = n;
+  }
+
+  /** 서비스 오버레이: 전력/수도/하수는 초록(공급)·빨강(끊김), 의료/치안/소방/공원은 커버리지 히트맵 */
   private rebuildServiceOverlay(): void {
     const g = this.state.grid;
-    const arr = this.serviceMode === 'power' ? g.powered : this.serviceMode === 'water' ? g.watered : g.sewered;
+    const mode = this.serviceMode;
+    const cov = mode === 'health' || mode === 'police' || mode === 'fire' || mode === 'park' ? this.state.cov[mode] : null;
+    const arr = mode === 'power' ? g.powered : mode === 'water' ? g.watered : g.sewered;
     let n = 0;
     for (let i = 0; i < g.count; i++) {
       const k = g.kind[i];
+      if (cov) {
+        // 커버리지: 건물·도로는 항상, 빈 땅은 커버되는 곳만 표시
+        if (k === K.EMPTY && cov[i] < 0.03) continue;
+        if (g.terrain[i] === T.WATER) continue;
+        const cx = i % g.size;
+        const cy = (i / g.size) | 0;
+        if (!this.state.isUnlockedAt(cx, cy)) continue;
+        this.m.makeTranslation(cx + 0.5, 0.12, cy + 0.5);
+        this.serviceMesh.setMatrixAt(n, this.m);
+        this.serviceMesh.setColorAt(n, heat(this.tmpColor, cov[i]));
+        n++;
+        continue;
+      }
       if (k === K.EMPTY) continue;
       if (isZoneKind(k) && g.access[i] < 0) continue;
       const x = i % g.size;
@@ -329,6 +428,23 @@ export class CityMeshes {
     const counts = new Map<ModelKey, number>();
     for (const key of this.bodyMeshes.keys()) counts.set(key, 0);
     let animating = false;
+
+    // 1) 모델별 개수를 세어 용량 확보
+    const need = new Map<ModelKey, number>();
+    for (let i = 0; i < g.count; i++) {
+      const k = g.kind[i];
+      let key: ModelKey | null = null;
+      if (isZoneKind(k) && g.level[i] > 0) key = modelKey(k, g.level[i]);
+      else if (k === K.FAC && g.owner[i] === i + 1) key = modelKey(K.FAC, g.fac[i]);
+      if (key !== null) need.set(key, (need.get(key) ?? 0) + 1);
+    }
+    for (const [key, n] of need) {
+      const body = this.bodyMeshes.get(key);
+      if (!body) continue;
+      this.bodyMeshes.set(key, this.grow(body, n));
+      const win = this.windowMeshes.get(key);
+      if (win) this.windowMeshes.set(key, this.grow(win, n));
+    }
 
     for (let i = 0; i < g.count; i++) {
       const k = g.kind[i];

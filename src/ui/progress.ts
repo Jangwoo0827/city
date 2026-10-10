@@ -2,7 +2,7 @@ import { GameState } from '../game/state';
 import { borrow, buyNode, repay, sectionCost, purchasedSections } from '../game/progression';
 import { DEV_NODES } from '../data/devtree';
 import { MAX_MILESTONE, MILESTONES_20, levelName } from '../data/milestones';
-import { LOAN } from '../utils/constants';
+import { LOAN, SECTIONS_PER_SIDE } from '../utils/constants';
 import { formatNumber } from '../utils/math';
 
 type Tab = 'milestone' | 'dev' | 'finance';
@@ -162,7 +162,7 @@ export class ProgressPanel {
         <button class="btn" data-act="repay" ${s.loan <= 0 ? 'disabled' : ''}>－ ₩${formatNumber(LOAN.step)} 상환</button>
       </div>
       <h4>맵 확장</h4>
-      <div class="row"><span>구매한 구획</span><b>${purchasedSections(s)} / 12</b></div>
+      <div class="row"><span>구매한 구획</span><b>${purchasedSections(s)} / ${SECTIONS_PER_SIDE * SECTIONS_PER_SIDE - 4}</b></div>
       <div class="row"><span>다음 구획 가격</span><b>₩${formatNumber(sectionCost(s))}</b></div>
       <p class="hint">어두운 구획의 테두리가 노란색이면 구매할 수 있습니다. 구획을 클릭하세요.</p>`;
   }

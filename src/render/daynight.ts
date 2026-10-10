@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { COLORS, DAY_LENGTH_SECONDS, GRID_SIZE } from '../utils/constants';
+import { COLORS, DAY_LENGTH_SECONDS } from '../utils/constants';
 import { lerp, smoothstep } from '../utils/math';
 
 const SKY_DAY = new THREE.Color(COLORS.sky);
@@ -28,6 +28,8 @@ export class DayNight {
     private readonly sun: THREE.DirectionalLight,
     private readonly hemi: THREE.HemisphereLight,
     private readonly onNight: (n: number) => void,
+    /** 태양/그림자의 중심 (카메라가 보는 지점) */
+    private readonly center: THREE.Vector3,
   ) {
     this.apply();
   }
@@ -49,10 +51,11 @@ export class DayNight {
     const dusk = Math.max(0, 1 - Math.abs(elev) / 0.32) * (elev > -0.12 ? 1 : 0);
 
     // 태양(낮)과 달(밤)은 같은 방향광을 공유: 밤에는 고도 절댓값으로 반대편에서 비춘다
-    const half = GRID_SIZE / 2;
+    const cx = this.center.x;
+    const cz = this.center.z;
     const h = 28 + 52 * Math.abs(elev);
-    this.sun.position.set(half + Math.cos(a) * 62, h, half + 30);
-    this.sun.target.position.set(half, 0, half);
+    this.sun.position.set(cx + Math.cos(a) * 62, h, cz + 30);
+    this.sun.target.position.set(cx, 0, cz);
 
     this.sun.intensity = lerp(0.45, 2.25, day);
     this.sun.color.copy(MOON_COLOR).lerp(SUN_COLOR, day).lerp(SUN_LOW, dusk * 0.6 * day);

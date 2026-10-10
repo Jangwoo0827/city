@@ -1,8 +1,8 @@
 import { GameState } from '../game/state';
 import { refreshStats } from '../game/simulation';
-import { SAVE_KEY, SECTIONS_PER_SIDE, START_SECTIONS } from './constants';
+import { LEGACY_GRID_SIZE, LEGACY_OFFSET, SAVE_KEY, SECTION_SIZE, SECTIONS_PER_SIDE, START_SECTIONS } from './constants';
 import { clamp } from './math';
-import { K, sectionIndex } from '../world/grid';
+import { K } from '../world/grid';
 import { facilityFootprint, facilityList } from '../world/buildings';
 import { FAC, FACILITIES } from '../data/catalog';
 import { MAX_MILESTONE, MILESTONES_20, START_DEV_POINTS, START_LOAN_LIMIT } from '../data/milestones';
@@ -47,6 +47,25 @@ const fromB64 = (b64: string, expected: number): Uint8Array => {
   for (let i = 0; i < expected; i++) a[i] = s.charCodeAt(i);
   return a;
 };
+
+/** 예전 64×64 레이어를 새 맵 중앙에 놓는다 */
+function embedLegacy(src: Uint8Array, size: number): Uint8Array {
+  const dst = new Uint8Array(size * size);
+  for (let y = 0; y < LEGACY_GRID_SIZE; y++) {
+    for (let x = 0; x < LEGACY_GRID_SIZE; x++) {
+      dst[(y + LEGACY_OFFSET) * size + x + LEGACY_OFFSET] = src[y * LEGACY_GRID_SIZE + x];
+    }
+  }
+  return dst;
+}
+
+/** 저장된 레이어를 현재 맵 크기로 복원 (예전 64×64 저장이면 중앙에 배치) */
+function decodeLayer(b64: string, count: number, size: number): { data: Uint8Array; legacy: boolean } {
+  const len = atob(b64).length;
+  if (len === count) return { data: fromB64(b64, count), legacy: false };
+  if (len === LEGACY_GRID_SIZE * LEGACY_GRID_SIZE) return { data: embedLegacy(fromB64(b64, len), size), legacy: true };
+  throw new Error('save length mismatch');
+}
 
 export function serializeGame(s: GameState): SaveV2 {
   const g = s.grid;
@@ -98,18 +117,20 @@ interface SaveV1 {
 }
 
 /** v1(발전소 1종, 구획·진행 없음) → v2 변환 */
-function migrateV1(d: SaveV1, count: number): SaveV2 {
+function migrateV1(d: SaveV1): SaveV2 {
+  const count = LEGACY_GRID_SIZE * LEGACY_GRID_SIZE;
   const level = fromB64(d.level, count);
   const kind = fromB64(d.kind, count);
-  const size = Math.round(Math.sqrt(count));
-  // 건물이 있는 구획은 모두 열어 준다
-  const sections = new Array<number>(SECTIONS_PER_SIDE * SECTIONS_PER_SIDE).fill(0);
-  for (const i of START_SECTIONS) sections[i] = 1;
+  const size = LEGACY_GRID_SIZE;
+  // 건물이 있는 구획은 모두 열어 준다 (예전 4×4 구획 기준; 로드할 때 새 맵 좌표로 옮겨짐)
+  const legacySide = LEGACY_GRID_SIZE / SECTION_SIZE;
+  const sections = new Array<number>(legacySide * legacySide).fill(0);
+  for (const i of [5, 6, 9, 10]) sections[i] = 1;
   let xp = 0;
   for (let i = 0; i < count; i++) {
     const x = i % size;
     const y = (i / size) | 0;
-    if (kind[i] !== K.EMPTY) sections[sectionIndex(x, y)] = 1;
+    if (kind[i] !== K.EMPTY) sections[Math.floor(y / SECTION_SIZE) * legacySide + Math.floor(x / SECTION_SIZE)] = 1;
     if (level[i] > 0) xp += 10 + 20 * level[i];
   }
   // 기존 도시의 규모에 맞는 마일스톤/포인트를 지급 (현금 보상은 제외)
@@ -155,13 +176,15 @@ export function deserializeGame(s: GameState, raw: unknown): boolean {
   try {
     const g = s.grid;
     let d = raw as SaveV2 | SaveV1;
-    if (d.v === 1) d = migrateV1(d, g.count);
+    if (d.v === 1) d = migrateV1(d);
     if (d.v !== 2) return false;
-    const kind = fromB64(d.kind, g.count);
-    const lvl = fromB64(d.lvl, g.count);
-    const progress = fromB64(d.progress, g.count);
-    const variant = fromB64(d.variant, g.count);
-    const roadType = fromB64(d.roadType, g.count);
+    const kindL = decodeLayer(d.kind, g.count, g.size);
+    const legacy = kindL.legacy;
+    const kind = kindL.data;
+    const lvl = decodeLayer(d.lvl, g.count, g.size).data;
+    const progress = decodeLayer(d.progress, g.count, g.size).data;
+    const variant = decodeLayer(d.variant, g.count, g.size).data;
+    const roadType = decodeLayer(d.roadType, g.count, g.size).data;
     if (!Number.isFinite(d.money) || !Number.isFinite(d.tick)) return false;
 
     g.clear();
@@ -174,8 +197,8 @@ export function deserializeGame(s: GameState, raw: unknown): boolean {
       g.roadType[i] = g.kind[i] === K.ROAD ? Math.min(2, roadType[i]) : 0;
     }
     for (let n = 0; n + 2 < d.facilities.length; n += 3) {
-      const ax = d.facilities[n];
-      const ay = d.facilities[n + 1];
+      const ax = d.facilities[n] + (legacy ? LEGACY_OFFSET : 0);
+      const ay = d.facilities[n + 1] + (legacy ? LEGACY_OFFSET : 0);
       const def = FACILITIES[d.facilities[n + 2]];
       if (!def) continue;
       const foot = facilityFootprint(def, ax, ay);
@@ -203,9 +226,21 @@ export function deserializeGame(s: GameState, raw: unknown): boolean {
     s.loan = d.loan;
     s.loanLimit = d.loanLimit;
     s.sections.fill(0);
-    d.sections.forEach((v, i) => {
-      if (i < s.sections.length) s.sections[i] = v ? 1 : 0;
-    });
+    if (legacy) {
+      // 예전 4×4 구획 → 새 8×8 구획 중앙으로 이동
+      const legacySide = LEGACY_GRID_SIZE / SECTION_SIZE;
+      const so = LEGACY_OFFSET / SECTION_SIZE;
+      d.sections.forEach((v, i) => {
+        if (!v) return;
+        const sx = (i % legacySide) + so;
+        const sy = Math.floor(i / legacySide) + so;
+        s.sections[sy * SECTIONS_PER_SIDE + sx] = 1;
+      });
+    } else {
+      d.sections.forEach((v, i) => {
+        if (i < s.sections.length) s.sections[i] = v ? 1 : 0;
+      });
+    }
     for (const i of START_SECTIONS) s.sections[i] = 1;
     s.groundwater = clamp(d.groundwater, 0, 1);
     s.waterPollution = clamp(d.waterPollution, 0, 1);

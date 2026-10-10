@@ -137,7 +137,7 @@ export function computeNetworks(s: GameState): void {
     for (const i of zoneTiles) {
       const r = g.access[i];
       if (dist[r] < 0) continue;
-      keys.push((comp[r] * 8192 + dist[r]) * 4096 + i);
+      keys.push((comp[r] * n + dist[r]) * n + i);
     }
     const sorted = Float64Array.from(keys).sort();
     const remaining = capByComp.slice();
@@ -146,8 +146,8 @@ export function computeNetworks(s: GameState): void {
     let builtServed = 0;
     for (let k = 0; k < sorted.length; k++) {
       const key = sorted[k];
-      const i = key % 4096;
-      const c = Math.floor(key / 4096 / 8192);
+      const i = key % n;
+      const c = Math.floor(key / n / n);
       const kind = g.kind[i];
       const lv = g.level[i];
       let use: number;

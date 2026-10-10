@@ -1,6 +1,10 @@
 // 모든 밸런스 수치는 이 파일에서 조정한다.
 
-export const GRID_SIZE = 64;
+/** 맵 한 변의 칸 수 (v1~v2 초기 저장은 64×64였음) */
+export const GRID_SIZE = 128;
+export const LEGACY_GRID_SIZE = 64;
+/** 예전 64×64 도시를 새 맵 중앙에 놓을 때의 오프셋 */
+export const LEGACY_OFFSET = (GRID_SIZE - LEGACY_GRID_SIZE) / 2;
 
 // ── 경제 ──────────────────────────────────────────────
 export const START_MONEY = 30000;
@@ -75,6 +79,13 @@ export const HAPPINESS = {
   noPowerPenalty: 25,
   noWaterPenalty: 20,
   noSewagePenalty: 10,
+  /** 서비스 커버리지(0~1)가 높을 때의 행복도 보너스 / 범죄 페널티 */
+  healthBonus: 10,
+  parkBonus: 8,
+  crimePenalty: 15,
+  /** 인구가 이 값을 넘기 시작하면 범죄 압력이 생기고, +crimeRamp 에서 최대 */
+  crimeStartPop: 400,
+  crimeRamp: 1200,
   pollutionPenalty: 30,
   unemploymentPenalty: 20,
   jobSurplusBonus: 10,
@@ -84,6 +95,15 @@ export const HAPPINESS = {
 };
 
 export const MILESTONES = [100, 500, 2000];
+
+/** 화재: 건물 수에 비례해 가끔 발생. 소방 커버리지가 높을수록 빨리·확실히 진압 */
+export const FIRE = {
+  minBuildings: 25,
+  chancePerBuilding: 0.00003,
+  burnTicks: 8,
+  /** 소방 커버리지 1.0일 때 틱당 추가로 줄어드는 연소 시간 */
+  coverageSpeed: 5,
+};
 
 // ── 저장 ──────────────────────────────────────────────
 export const SAVE_KEY = 'mini-city-save-v1';
@@ -121,11 +141,16 @@ export const COLORS = {
   badTile: 0xf0443a,
 };
 
-// ── 맵 구획 (64×64 = 4×4 구획, 구획 하나는 16×16칸) ──────────────
+// ── 맵 구획 (128×128 = 8×8 구획, 구획 하나는 16×16칸) ─────────────
 export const SECTION_SIZE = 16;
 export const SECTIONS_PER_SIDE = GRID_SIZE / SECTION_SIZE;
 /** 시작 시 열려 있는 구획(중앙 2×2 = 32×32칸) 인덱스 */
-export const START_SECTIONS = [5, 6, 9, 10];
+export const START_SECTIONS = ((): number[] => {
+  const n = SECTIONS_PER_SIDE;
+  const a = n / 2 - 1;
+  const b = n / 2;
+  return [a * n + a, a * n + b, b * n + a, b * n + b];
+})();
 /** 구획 구매 비용 = base × (1 + 구매한 구획 수 × growth) */
 export const SECTION_COST = { base: 2000, growth: 0.6 };
 

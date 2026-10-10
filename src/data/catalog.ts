@@ -22,7 +22,12 @@ export const ROAD_TYPES: RoadTypeDef[] = [
   { id: 2, name: '대형 도로', cost: 24, upkeep: 0.25, depth: 6, halfWidth: 0.43, node: 'road_large', desc: '왕복 6차로 · 구역은 양옆 6칸까지' },
 ];
 
-export type FacilityCategory = 'power' | 'water' | 'sewage';
+export type FacilityCategory = 'power' | 'water' | 'sewage' | 'health' | 'police' | 'fire' | 'park';
+
+/** 반경(커버리지)을 가지는 서비스 카테고리 */
+export type ServiceCategory = 'health' | 'police' | 'fire' | 'park';
+export const SERVICE_CATEGORIES: ServiceCategory[] = ['health', 'police', 'fire', 'park'];
+export const isServiceCategory = (c: FacilityCategory): c is ServiceCategory => (SERVICE_CATEGORIES as string[]).includes(c);
 
 export const FAC = {
   WIND: 1,
@@ -32,6 +37,12 @@ export const FAC = {
   WELL: 5,
   OUTLET: 6,
   TREATMENT: 7,
+  CLINIC: 8,
+  HOSPITAL: 9,
+  POLICE: 10,
+  FIRE: 11,
+  PARK_S: 12,
+  PARK_L: 13,
 } as const;
 
 export interface FacilityDef {
@@ -48,6 +59,8 @@ export interface FacilityDef {
   capacity: number;
   /** 물 타일에 인접해야 하는 시설 */
   needsWater: boolean;
+  /** 서비스 반경(칸). 0이면 도로망 시설 */
+  radius?: number;
   /** 해금에 필요한 개발 트리 노드 (null = 기본 제공) */
   node: string | null;
   desc: string;
@@ -88,6 +101,36 @@ export const FACILITIES: Record<number, FacilityDef> = {
     id: FAC.TREATMENT, name: '폐수 처리장', icon: '♻️', category: 'sewage', w: 2, h: 2,
     cost: 6000, upkeep: 15, capacity: 150, needsWater: false, node: 'fac_treatment',
     desc: '하수를 정화 처리 · 오염 없음',
+  },
+  [FAC.CLINIC]: {
+    id: FAC.CLINIC, name: '진료소', icon: '🏥', category: 'health', w: 2, h: 2,
+    cost: 1200, upkeep: 3, capacity: 300, needsWater: false, radius: 8, node: 'fac_clinic',
+    desc: '반경 8칸 · 300명 수용 · 건강·행복 ↑',
+  },
+  [FAC.HOSPITAL]: {
+    id: FAC.HOSPITAL, name: '병원', icon: '⚕️', category: 'health', w: 3, h: 3,
+    cost: 6000, upkeep: 12, capacity: 1500, needsWater: false, radius: 14, node: 'fac_hospital',
+    desc: '반경 14칸 · 1,500명 수용 · 넓은 지역 의료',
+  },
+  [FAC.POLICE]: {
+    id: FAC.POLICE, name: '경찰서', icon: '👮', category: 'police', w: 2, h: 2,
+    cost: 1800, upkeep: 4, capacity: 0, needsWater: false, radius: 9, node: 'fac_police',
+    desc: '반경 9칸 · 범죄 감소 (인구가 많을수록 필요)',
+  },
+  [FAC.FIRE]: {
+    id: FAC.FIRE, name: '소방서', icon: '🚒', category: 'fire', w: 2, h: 2,
+    cost: 1600, upkeep: 4, capacity: 0, needsWater: false, radius: 10, node: 'fac_fire',
+    desc: '반경 10칸 · 화재를 진압해 건물 소실을 막음',
+  },
+  [FAC.PARK_S]: {
+    id: FAC.PARK_S, name: '소공원', icon: '🌳', category: 'park', w: 1, h: 1,
+    cost: 300, upkeep: 1, capacity: 0, needsWater: false, radius: 4, node: 'fac_park_s',
+    desc: '반경 4칸 · 행복도 ↑ (가장 저렴한 행복 수단)',
+  },
+  [FAC.PARK_L]: {
+    id: FAC.PARK_L, name: '대공원', icon: '🏞️', category: 'park', w: 2, h: 2,
+    cost: 1000, upkeep: 2, capacity: 0, needsWater: false, radius: 7, node: 'fac_park_l',
+    desc: '반경 7칸 · 행복도 ↑↑',
   },
 };
 
