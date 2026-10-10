@@ -77,6 +77,49 @@ describe('도로·구역·시설 규칙', () => {
   });
 });
 
+describe('철거 환급', () => {
+  it('도로를 철거하면 건설비의 50%를 돌려받는다', () => {
+    const s = new GameState();
+    applyAction(s, 'road', opts(), { x: 20, y: 30 }, { x: 24, y: 30 }); // 5칸 × 12
+    const before = s.money;
+    const r = applyAction(s, 'demolish', opts(), { x: 20, y: 30 }, { x: 24, y: 30 });
+    expect(r.ok).toBe(true);
+    expect(s.money - before).toBe(5 * 6);
+    expect(s.stats.roads).toBe(0);
+  });
+
+  it('여러 칸짜리 시설은 한 번만 환급한다', () => {
+    const s = new GameState();
+    s.unlocked.add('fac_coal');
+    applyAction(s, 'facility', opts({ facility: FAC.COAL }), { x: 30, y: 30 }, { x: 30, y: 30 });
+    const before = s.money;
+    applyAction(s, 'demolish', opts(), { x: 30, y: 30 }, { x: 31, y: 31 }); // 2×2 전체 선택
+    expect(s.money - before).toBe(750); // 1500 × 50%
+    expect(s.stats.facilities).toBe(0);
+  });
+
+  it('건물이 있는 구역은 레벨에 따라 추가 환급', () => {
+    const s = new GameState();
+    applyAction(s, 'road', opts(), { x: 20, y: 30 }, { x: 30, y: 30 });
+    applyAction(s, 'zone', opts(), { x: 25, y: 31 }, { x: 25, y: 31 });
+    s.grid.level[s.grid.idx(25, 31)] = 3;
+    const before = s.money;
+    applyAction(s, 'demolish', opts(), { x: 25, y: 31 }, { x: 25, y: 31 });
+    expect(s.money - before).toBe(3 + 15);
+  });
+
+  it('자금이 마이너스여도 철거할 수 있다', () => {
+    const s = new GameState();
+    applyAction(s, 'road', opts(), { x: 20, y: 30 }, { x: 22, y: 30 });
+    s.money = -3000;
+    const pv = previewAction(s, 'demolish', opts(), { x: 20, y: 30 }, { x: 22, y: 30 });
+    expect(pv.tiles.every((t) => t.ok)).toBe(true);
+    const r = applyAction(s, 'demolish', opts(), { x: 20, y: 30 }, { x: 22, y: 30 });
+    expect(r.ok).toBe(true);
+    expect(s.money).toBe(-3000 + 3 * 6);
+  });
+});
+
 describe('전력·상수도·하수 네트워크', () => {
   it('세 가지가 모두 공급되면 건물이 자라고, 하나라도 끊기면 자라지 않는다', () => {
     const s = new GameState();

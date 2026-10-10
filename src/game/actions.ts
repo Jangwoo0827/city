@@ -1,4 +1,4 @@
-import { COST, XP_AWARD } from '../utils/constants';
+import { COST, REFUND, XP_AWARD } from '../utils/constants';
 import { FACILITIES, ROAD_TYPES } from '../data/catalog';
 import { DIRS, Grid, K, Tile, isZoneKind } from '../world/grid';
 import { straightLine } from '../world/roads';
@@ -119,19 +119,32 @@ function planFacility(s: GameState, facId: number, at: Tile): Plan {
   };
 }
 
+/** 철거: 비용은 음수(= 환급). 시설은 통째로 한 번만 환급한다. */
 function planDemolish(s: GameState, a: Tile, b: Tile): Plan {
   const g = s.grid;
   const tiles: PreviewTile[] = [];
   const placeable: Tile[] = [];
   const costs: number[] = [];
+  const seenFacilities = new Set<number>();
   for (const t of rectTiles(a, b)) {
     if (!g.inBounds(t.x, t.y)) continue;
-    const ok = g.kind[g.idx(t.x, t.y)] !== K.EMPTY && s.isUnlockedAt(t.x, t.y);
+    const i = g.idx(t.x, t.y);
+    const k = g.kind[i];
+    const ok = k !== K.EMPTY && s.isUnlockedAt(t.x, t.y);
     tiles.push({ ...t, ok });
-    if (ok) {
-      placeable.push(t);
-      costs.push(COST.demolish);
+    if (!ok) continue;
+    let refund = 0;
+    if (k === K.ROAD) refund = ROAD_TYPES[g.roadType[i]].cost * REFUND.rate;
+    else if (isZoneKind(k)) refund = COST.zone * REFUND.rate + g.level[i] * REFUND.perBuildingLevel;
+    else if (k === K.FAC) {
+      const owner = g.owner[i];
+      if (!seenFacilities.has(owner)) {
+        seenFacilities.add(owner);
+        refund = (FACILITIES[g.fac[owner - 1]]?.cost ?? 0) * REFUND.rate;
+      }
     }
+    placeable.push(t);
+    costs.push(-Math.round(refund));
   }
   return { tiles, placeable, costs };
 }
@@ -157,7 +170,7 @@ const sum = (a: number[]): number => a.reduce((x, y) => x + y, 0);
 export function previewAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile, b: Tile): Preview {
   const plan = makePlan(s, tool, o, a, b);
   const cost = sum(plan.costs);
-  const affordable = cost <= s.money;
+  const affordable = cost <= 0 || cost <= s.money;
   const n = plan.placeable.length;
   let label = '';
   if (plan.blocked) label = plan.blocked;
@@ -178,7 +191,7 @@ export function previewAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile,
         break;
       }
       case 'demolish':
-        label = n > 0 ? `철거 ${n}칸` : '철거';
+        label = n > 0 ? `철거 ${n}칸 · 환급 +₩${(-cost).toLocaleString('ko-KR')}` : '철거';
         break;
       default:
         label = '';
@@ -218,11 +231,13 @@ export function applyAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile, b
   for (let n = 0; n < plan.placeable.length; n++) {
     const t = plan.placeable[n];
     const cost = plan.costs[n];
-    if (s.money < cost) {
+    if (cost > 0 && s.money < cost) {
       broke = true;
       break;
     }
     const i = g.idx(t.x, t.y);
+    // 이미 같은 시설의 다른 칸을 철거하며 사라진 타일은 건너뜀
+    if (tool === 'demolish' && g.kind[i] === K.EMPTY) continue;
     switch (tool) {
       case 'road':
         if (g.kind[i] !== K.ROAD) xp += XP_AWARD.road;

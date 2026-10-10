@@ -70,7 +70,7 @@ const TOOLS: ToolDef[] = [
   { tool: 'road', icon: '🛣️', name: '도로', hint: '드래그로 직선 설치 · 같은 자리에 더 큰 도로를 덮으면 업그레이드' },
   { tool: 'zone', icon: '🏘️', name: '구역', hint: `타일당 ₩${COST.zone} · 도로 근처에 드래그로 지정` },
   { tool: 'facility', icon: '⚡', name: '시설', hint: '발전소·상하수도 시설' },
-  { tool: 'demolish', icon: '🧨', name: '철거', hint: '드래그로 영역 철거 (환급 없음)' },
+  { tool: 'demolish', icon: '🧨', name: '철거', hint: '드래그로 영역 철거 · 건설비의 50% 환급' },
   { tool: 'select', icon: '🔍', name: '정보', hint: '타일·건물 정보 보기' },
 ];
 

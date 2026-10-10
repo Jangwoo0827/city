@@ -10,7 +10,14 @@ export const BANKRUPT_LIMIT = -5000;
 export const COST = {
   road: 12,
   zone: 6,
-  demolish: 0, // 철거는 무료, 환급도 없음
+};
+
+/** 철거 시 환급: 건설비의 일부를 돌려받는다 */
+export const REFUND = {
+  /** 도로·구역·시설 건설비 대비 환급 비율 */
+  rate: 0.5,
+  /** 건물이 있는 구역은 레벨당 추가 환급 */
+  perBuildingLevel: 5,
 };
 
 /** 틱(1초)마다 나가는 유지비 */
