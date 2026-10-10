@@ -11,11 +11,13 @@ export function updateFires(s: GameState): void {
   const g = s.grid;
 
   // 발화
-  if (s.stats.buildings >= FIRE.minBuildings && Math.random() < FIRE.chancePerBuilding * s.stats.buildings) {
+  const cooled = s.tick - s.lastFireTick >= FIRE.cooldownTicks;
+  if (cooled && s.stats.buildings >= FIRE.minBuildings && Math.random() < FIRE.chancePerBuilding * s.stats.buildings) {
     for (let tries = 0; tries < 60; tries++) {
       const i = Math.floor(Math.random() * g.count);
       if (!isZoneKind(g.kind[i]) || g.level[i] === 0 || s.fires.has(i)) continue;
       s.fires.set(i, FIRE.burnTicks);
+      s.lastFireTick = s.tick;
       const covered = s.cov.fire[i] > 0.05;
       s.toast(
         covered

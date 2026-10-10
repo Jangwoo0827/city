@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { GameState } from '../src/game/state';
 import { applyAction, previewAction, canPlaceFacility, ToolOptions } from '../src/game/actions';
 import { refreshStats, tick } from '../src/game/simulation';
+import { updateFires } from '../src/game/events';
 import { awardXp, buyNode, buySection, sectionCost } from '../src/game/progression';
 import { FAC } from '../src/data/catalog';
 import { K } from '../src/world/grid';
@@ -209,14 +210,41 @@ describe('서비스 건물(P3)', () => {
   it('병원 수용량보다 주민이 많으면 효율이 떨어진다', () => {
     const s = new GameState();
     unlockAll(s);
-    applyAction(s, 'facility', opts({ facility: FAC.CLINIC }), T(30, 30), T(30, 30)); // 수용 600명
-    // 레벨 3 주택(28명) 30채 = 840명
-    for (let k = 0; k < 30; k++) house(s, 28 + (k % 6), 33 + Math.floor(k / 6));
+    applyAction(s, 'facility', opts({ facility: FAC.CLINIC }), T(30, 30), T(30, 30)); // 환자 120명 수용
+    // 레벨 3 주택(28명) 80채 = 2,240명 → 환자 8% = 179명
+    for (let k = 0; k < 80; k++) house(s, 24 + (k % 8), 33 + Math.floor(k / 8));
     refreshStats(s);
     const load = [...s.serviceLoad.values()][0];
-    expect(load.pop).toBe(840);
-    expect(load.eff).toBeCloseTo(600 / 840, 3);
-    expect(s.stats.covHealth).toBeCloseTo(600 / 840, 2); // 반경 안쪽이라 효율이 곧 커버리지
+    expect(load.pop).toBe(2240);
+    expect(load.patients).toBeCloseTo(2240 * 0.08, 3);
+    expect(load.eff).toBeCloseTo(120 / (2240 * 0.08), 3);
+    expect(s.stats.covHealth).toBeLessThanOrEqual(load.eff + 1e-6); // 커버리지 = 거리 감쇠 × 효율
+    expect(s.stats.covHealth).toBeGreaterThan(0.3);
+  });
+
+  it('주민 1,000명 규모에서는 진료소 하나로 충분하다', () => {
+    const s = new GameState();
+    unlockAll(s);
+    applyAction(s, 'facility', opts({ facility: FAC.CLINIC }), T(30, 30), T(30, 30));
+    for (let k = 0; k < 36; k++) house(s, 28 + (k % 6), 33 + Math.floor(k / 6)); // 1,008명
+    refreshStats(s);
+    expect([...s.serviceLoad.values()][0].eff).toBe(1);
+  });
+
+  it('화재는 한 번 난 뒤 일정 기간은 다시 나지 않는다', () => {
+    const s = new GameState();
+    for (let k = 0; k < 60; k++) house(s, 20 + (k % 10), 20 + Math.floor(k / 10) * 2);
+    s.stats.buildings = 60;
+    s.lastFireTick = s.tick; // 방금 불이 났다고 가정
+    const before = s.fires.size;
+    const orig = Math.random;
+    Math.random = () => 0; // 항상 발화 조건을 만족시킨다
+    try {
+      updateFires(s);
+    } finally {
+      Math.random = orig;
+    }
+    expect(s.fires.size).toBe(before); // 쿨다운 중이라 새 불은 없다
   });
 
   it('의료·공원 커버리지는 행복도 목표치를 올린다', () => {

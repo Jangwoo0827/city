@@ -1,4 +1,5 @@
 import { SERVICE_CATEGORIES, isServiceCategory } from '../data/catalog';
+import { HEALTH } from '../utils/constants';
 import { K } from '../world/grid';
 import { buildingStats, facilityList } from '../world/buildings';
 import { GameState } from './state';
@@ -13,7 +14,7 @@ export function falloff(d: number, radius: number): number {
 /**
  * 서비스 커버리지 계산 (진료소·병원·경찰서·소방서·공원).
  * 시설마다 반경 안의 타일에 거리 감쇠된 값을 기록하고, 여러 시설이 겹치면 가장 높은 값을 쓴다.
- * 수용량이 있는 시설(의료)은 반경 안의 주민 수가 수용량보다 많으면 효율이 떨어진다.
+ * 수용량이 있는 시설(의료)은 반경 안 주민 중 일부(환자 비율)가 이용하며, 환자가 수용량보다 많으면 효율이 떨어진다.
  */
 export function computeCoverage(s: GameState): void {
   const g = s.grid;
@@ -42,8 +43,9 @@ export function computeCoverage(s: GameState): void {
         }
       }
     }
-    const eff = def.capacity > 0 ? Math.min(1, def.capacity / Math.max(pop, 1)) : 1;
-    s.serviceLoad.set(g.idx(f.x, f.y), { pop, eff });
+    const patients = pop * HEALTH.patientRate;
+    const eff = def.capacity > 0 ? Math.min(1, def.capacity / Math.max(patients, 1)) : 1;
+    s.serviceLoad.set(g.idx(f.x, f.y), { pop, patients, eff });
 
     const arr = s.cov[def.category];
     for (let y = y0; y <= y1; y++) {

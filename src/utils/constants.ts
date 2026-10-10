@@ -96,10 +96,15 @@ export const HAPPINESS = {
 
 export const MILESTONES = [100, 500, 2000];
 
+/** 의료: 반경 안 주민 중 의료 시설을 이용하는 환자 비율 */
+export const HEALTH = { patientRate: 0.08 };
+
 /** 화재: 건물 수에 비례해 가끔 발생. 소방 커버리지가 높을수록 빨리·확실히 진압 */
 export const FIRE = {
-  minBuildings: 25,
-  chancePerBuilding: 0.00003,
+  minBuildings: 40,
+  chancePerBuilding: 0.000008,
+  /** 한 번 불이 난 뒤 다음 발화까지 최소 간격(틱) */
+  cooldownTicks: 150,
   burnTicks: 8,
   /** 소방 커버리지 1.0일 때 틱당 추가로 줄어드는 연소 시간 */
   coverageSpeed: 5,

@@ -125,9 +125,11 @@ export class GameState {
     park: new Float32Array(this.grid.count),
   };
   /** 서비스 시설(앵커 인덱스)별 이용 인구 / 효율 */
-  serviceLoad = new Map<number, { pop: number; eff: number }>();
+  serviceLoad = new Map<number, { pop: number; patients: number; eff: number }>();
   /** 불타는 건물: 타일 인덱스 → 남은 연소 틱 */
   fires = new Map<number, number>();
+  /** 마지막으로 불이 난 틱 (화재 간격 제한용) */
+  lastFireTick = -1e9;
 
   // ── 상하수도 환경 ──
   /** 지하수 저장량 0..1 */
@@ -203,6 +205,7 @@ export class GameState {
     this.groundwater = 1;
     this.waterPollution = 0;
     this.fires.clear();
+    this.lastFireTick = -1e9;
     this.resetSections();
     this.markAllDirty();
     this.emit('reset');

@@ -104,13 +104,13 @@ export const FACILITIES: Record<number, FacilityDef> = {
   },
   [FAC.CLINIC]: {
     id: FAC.CLINIC, name: '진료소', icon: '🏥', category: 'health', w: 2, h: 2,
-    cost: 1200, upkeep: 3, capacity: 600, needsWater: false, radius: 14, node: 'fac_clinic',
-    desc: '반경 14칸 · 600명 수용 · 건강·행복 ↑',
+    cost: 1200, upkeep: 3, capacity: 120, needsWater: false, radius: 14, node: 'fac_clinic',
+    desc: '반경 14칸 · 환자 120명 수용(주민 약 1,500명) · 건강·행복 ↑',
   },
   [FAC.HOSPITAL]: {
     id: FAC.HOSPITAL, name: '병원', icon: '⚕️', category: 'health', w: 3, h: 3,
-    cost: 6000, upkeep: 12, capacity: 3000, needsWater: false, radius: 24, node: 'fac_hospital',
-    desc: '반경 24칸 · 3,000명 수용 · 넓은 지역 의료',
+    cost: 6000, upkeep: 12, capacity: 600, needsWater: false, radius: 24, node: 'fac_hospital',
+    desc: '반경 24칸 · 환자 600명 수용(주민 약 7,500명) · 넓은 지역 의료',
   },
   [FAC.POLICE]: {
     id: FAC.POLICE, name: '경찰서', icon: '👮', category: 'police', w: 2, h: 2,
