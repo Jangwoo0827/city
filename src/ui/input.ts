@@ -1,6 +1,7 @@
 import { GameState } from '../game/state';
 import { Tool, applyAction, previewAction } from '../game/actions';
-import { Tile } from '../world/grid';
+import { Tile, sectionIndex } from '../world/grid';
+import { isSectionAdjacent, sectionCost } from '../game/progression';
 import { GameView } from '../render/scene';
 import { ToolController } from './toolbar';
 import { Tooltip } from './panels';
@@ -14,13 +15,15 @@ interface PointerInfo {
 const TOOL_KEYS: Record<string, Tool> = {
   Digit1: 'road',
   Digit2: 'zone',
-  Digit3: 'plant',
+  Digit3: 'facility',
   Digit4: 'demolish',
   Digit5: 'select',
 };
 
 export interface InputHooks {
   onSelect: (tile: Tile | null) => void;
+  /** 잠긴 구획 클릭 (구획 번호) */
+  onLockedSection: (section: number) => void;
   onTogglePause: () => void;
 }
 
@@ -177,6 +180,10 @@ export class InputController {
       }
     }
     if (this.pointers.size < 2) this.pinchDist = 0;
+    if (e.pointerType !== 'mouse') {
+      this.hover = null;
+      this.refreshPreview(e.clientX, e.clientY);
+    }
   }
 
   private onCancel(e: PointerEvent): void {
@@ -224,12 +231,16 @@ export class InputController {
   }
 
   private commit(a: Tile, b: Tile): void {
-    const { tool, zone } = this.tools;
+    const { tool } = this.tools;
+    if (!this.state.isUnlockedAt(b.x, b.y)) {
+      this.hooks.onLockedSection(sectionIndex(b.x, b.y));
+      return;
+    }
     if (tool === 'select') {
       this.hooks.onSelect(b);
       return;
     }
-    const res = applyAction(this.state, tool, zone, a, b);
+    const res = applyAction(this.state, tool, this.tools.options(), a, b);
     if (res.message) this.state.toast(res.message, 'bad');
     this.refreshPreview(this.lastX, this.lastY);
   }
@@ -244,8 +255,19 @@ export class InputController {
       this.tip.hide();
       return;
     }
+    if (!this.state.isUnlockedAt(this.hover.x, this.hover.y) && this.buildStart === null) {
+      // 잠긴 구획 위: 구획 해금 안내
+      const sec = sectionIndex(this.hover.x, this.hover.y);
+      this.view.overlay.set(null);
+      if (isSectionAdjacent(this.state, sec)) {
+        this.tip.show(`🔒 구획 해금 ₩${sectionCost(this.state).toLocaleString('ko-KR')} (클릭)`, clientX, clientY, true);
+      } else {
+        this.tip.show('🔒 잠긴 구획 (맞닿은 구획부터 해금)', clientX, clientY, false);
+      }
+      return;
+    }
     const a = this.buildStart ?? this.hover;
-    const pv = previewAction(this.state, this.tools.tool, this.tools.zone, a, this.hover);
+    const pv = previewAction(this.state, this.tools.tool, this.tools.options(), a, this.hover);
     this.view.overlay.set(pv);
     const anyOk = pv.tiles.some((t) => t.ok);
     this.tip.show(pv.label, clientX, clientY, anyOk || pv.neutral);

@@ -1,6 +1,8 @@
 import { GameState, ToastKind } from '../game/state';
 import { BANKRUPT_LIMIT, DAYS_PER_MONTH, MONTHS_PER_YEAR } from '../utils/constants';
 import { formatNumber } from '../utils/math';
+import { MAX_MILESTONE, MILESTONES_20, levelName } from '../data/milestones';
+import type { ServiceMode } from '../render/instancing';
 
 export interface HudHooks {
   onNewGame: () => void;
@@ -9,6 +11,8 @@ export interface HudHooks {
   onSpeed: (speed: number) => void;
   /** 저장 데이터가 있는지 */
   hasSave: () => boolean;
+  onOpenProgress: () => void;
+  onOverlay: (mode: ServiceMode) => void;
 }
 
 const SPEEDS: { speed: number; label: string; title: string }[] = [
@@ -53,6 +57,10 @@ export class Hud {
   private readonly happy: HTMLElement;
   private readonly happyFace: HTMLElement;
   private readonly date: HTMLElement;
+  private readonly lvName: HTMLElement;
+  private readonly xpFill: HTMLElement;
+  private readonly utilBtns = new Map<ServiceMode, HTMLButtonElement>();
+  private overlayMode: ServiceMode = 'none';
   private readonly speedBtns = new Map<number, HTMLButtonElement>();
   private readonly rci: Record<'R' | 'C' | 'I', HTMLElement>;
   private readonly toasts: HTMLElement;
@@ -60,6 +68,7 @@ export class Hud {
   private readonly overlay: HTMLElement;
   private readonly loadItem: HTMLButtonElement;
   private lastMenuOpen = false;
+  private utilDefs: { mode: ServiceMode; icon: string; name: string }[] = [];
 
   constructor(
     private readonly root: HTMLElement,
@@ -74,6 +83,7 @@ export class Hud {
       <div class="stat" title="전체 인구"><span class="ico">👥</span><div><b data-k="pop"></b><small>인구</small></div></div>
       <div class="stat" title="일자리 / 노동력"><span class="ico">💼</span><div><b data-k="jobs"></b><small data-k="workers"></small></div></div>
       <div class="stat" title="행복도 (0~100)"><span class="ico" data-k="face"></span><div><b data-k="happy"></b><small>행복도</small></div></div>
+      <button class="stat level" data-k="levelbtn" title="마일스톤 · 개발 트리 · 재정"><span class="ico">🏆</span><div><b data-k="lvname"></b><span class="xpbar"><i data-k="xpfill"></i></span></div></button>
       <div class="stat date" title="날짜"><span class="ico">📅</span><div><b data-k="date"></b><small>1초 = 1일</small></div></div>
       <div class="speed"></div>
       <button class="menu-btn" aria-label="메뉴">☰</button>
@@ -87,6 +97,9 @@ export class Hud {
     this.happy = q('happy');
     this.happyFace = q('face');
     this.date = q('date');
+    this.lvName = q('lvname');
+    this.xpFill = q('xpfill');
+    q('levelbtn').addEventListener('click', () => hooks.onOpenProgress());
 
     const speedBox = top.querySelector('.speed') as HTMLElement;
     for (const s of SPEEDS) {
@@ -142,6 +155,29 @@ export class Hud {
       I: rciBox.querySelector('.I i') as HTMLElement,
     };
 
+    // 공급 현황 + 오버레이 토글
+    const utils = document.createElement('div');
+    utils.id = 'utils';
+    utils.className = 'panel';
+    const defs: { mode: ServiceMode; icon: string; name: string }[] = [
+      { mode: 'power', icon: '⚡', name: '전력' },
+      { mode: 'water', icon: '💧', name: '상수도' },
+      { mode: 'sewage', icon: '🚰', name: '하수' },
+    ];
+    for (const d of defs) {
+      const b = document.createElement('button');
+      b.className = 'util-row';
+      b.title = `${d.name} 공급 오버레이 (초록 = 공급, 빨강 = 끊김)`;
+      b.addEventListener('click', () => {
+        this.overlayMode = this.overlayMode === d.mode ? 'none' : d.mode;
+        hooks.onOverlay(this.overlayMode);
+        this.update();
+      });
+      utils.appendChild(b);
+      this.utilBtns.set(d.mode, b);
+    }
+    this.utilDefs = defs;
+
     this.toasts = document.createElement('div');
     this.toasts.id = 'toasts';
 
@@ -152,7 +188,7 @@ export class Hud {
     const area = document.createElement('div');
     area.id = 'top-area';
     area.append(top, this.toasts);
-    root.append(area, this.menu, rciBox, this.overlay);
+    root.append(area, this.menu, utils, rciBox, this.overlay);
 
     state.on('toast', (msg, kind) => this.toast(msg, kind));
     state.on('gameover', () => this.showGameOver());
@@ -196,6 +232,26 @@ export class Hud {
     this.happyFace.textContent = faceFor(h);
     this.date.textContent = formatDate(s.tick);
     for (const [sp, b] of this.speedBtns) b.classList.toggle('active', sp === s.speed);
+
+    // 마일스톤
+    const next = s.level < MAX_MILESTONE ? MILESTONES_20[s.level] : null;
+    const prevXp = s.level > 0 ? MILESTONES_20[s.level - 1].xp : 0;
+    this.lvName.textContent = `Lv.${s.level} ${levelName(s.level)}`;
+    this.xpFill.style.width = `${next ? Math.min(100, ((s.xp - prevXp) / (next.xp - prevXp)) * 100) : 100}%`;
+
+    // 공급 현황
+    const sup: Record<string, [number, number]> = {
+      power: [st.powerSupply, st.powerDemand],
+      water: [st.waterSupply, st.waterDemand],
+      sewage: [st.sewageCap, st.sewageDemand],
+    };
+    for (const d of this.utilDefs) {
+      const [a, b] = sup[d.mode];
+      const short = b > a + 1e-6;
+      const btn = this.utilBtns.get(d.mode)!;
+      btn.innerHTML = `<span>${d.icon} ${d.name}</span><b class="${short ? 'neg' : ''}">${b.toFixed(1)} / ${a.toFixed(1)}</b>`;
+      btn.classList.toggle('active', this.overlayMode === d.mode);
+    }
 
     this.setBar('R', st.demandR);
     this.setBar('C', st.demandC);

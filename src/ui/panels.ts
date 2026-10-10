@@ -1,9 +1,11 @@
 import { GameState } from '../game/state';
 import { taxMultiplier } from '../game/economy';
-import { COST, GROWTH, UPKEEP, MAX_LEVEL } from '../utils/constants';
+import { effectiveCapacity, powerUse, sewageUse, waterUse } from '../game/network';
+import { GROWTH, MAX_LEVEL } from '../utils/constants';
+import { ROAD_TYPES } from '../data/catalog';
 import { K, Tile, isZoneKind } from '../world/grid';
-import { BUILDING_NAME, KIND_NAME, PLANT_SIZE, buildingStats, plantAnchorAt } from '../world/buildings';
-import { hasAdjacentRoad, roadMask } from '../world/roads';
+import { BUILDING_NAME, KIND_NAME, buildingStats, facilityAt } from '../world/buildings';
+import { roadMask } from '../world/roads';
 import { ZONE_NAME, zoneTypeOfKind } from '../world/zones';
 
 /** 마우스 커서를 따라다니는 비용/상태 툴팁 */
@@ -72,9 +74,8 @@ export class InfoPanel {
   /** 선택 대상이 차지하는 타일 영역 */
   footprint(): Footprint | null {
     if (!this.tile) return null;
-    const g = this.state.grid;
-    const a = plantAnchorAt(g, this.tile.x, this.tile.y);
-    if (a) return { x: a.x, y: a.y, w: PLANT_SIZE, h: PLANT_SIZE };
+    const f = facilityAt(this.state.grid, this.tile.x, this.tile.y);
+    if (f) return { x: f.x, y: f.y, w: f.def.w, h: f.def.h };
     return { x: this.tile.x, y: this.tile.y, w: 1, h: 1 };
   }
 
@@ -100,57 +101,71 @@ export class InfoPanel {
     if (isZoneKind(k)) {
       const zt = zoneTypeOfKind(k)!;
       const lv = g.level[i];
-      const road = hasAdjacentRoad(g, x, y);
+      const road = g.access[i] >= 0;
       const powered = g.powered[i] === 1;
+      const watered = g.watered[i] === 1;
+      const sewered = g.sewered[i] === 1;
+      const demand = zt === 'R' ? s.stats.demandR : zt === 'C' ? s.stats.demandC : s.stats.demandI;
       if (lv > 0) {
         title = `${BUILDING_NAME[k]} Lv.${lv}`;
         const b = buildingStats(k, lv);
         row('구역', ZONE_NAME[zt]);
         if (b.pop) row('주민', `${b.pop}명`);
         if (b.jobs) row('일자리', `${b.jobs}개`);
-        row('세금', powered ? `+${(b.tax * taxMultiplier(s.happiness)).toFixed(1)}/일` : '납세 없음');
+        const paying = powered && watered && sewered;
+        row('세금', paying ? `+${(b.tax * taxMultiplier(s.happiness)).toFixed(1)}/일` : '납세 없음');
         if (lv < MAX_LEVEL) {
           const pct = Math.min(100, Math.round(g.progress[i] * 100));
-          const demand = zt === 'R' ? s.stats.demandR : zt === 'C' ? s.stats.demandC : s.stats.demandI;
           const need = GROWTH.minDemandForLevel[lv + 1];
-          row('성장', demand > need ? `${pct}%` : '수요 부족');
+          row('성장', !paying ? '공급 부족' : demand > need ? `${pct}%` : '수요 부족');
           rows.push(`<div class="bar"><i style="width:${pct}%"></i></div>`);
         } else {
           row('성장', '최고 레벨');
         }
+        row('전력 / 수도 / 하수', `${(powerUse(k, lv)).toFixed(1)} / ${waterUse(k, lv).toFixed(1)} / ${sewageUse(k, lv).toFixed(1)}`);
       } else {
         title = `${ZONE_NAME[zt]} 구역 (빈 땅)`;
-        const demand = zt === 'R' ? s.stats.demandR : zt === 'C' ? s.stats.demandC : s.stats.demandI;
-        if (!road) row('상태', '<span class="no">도로 인접 필요</span>');
-        else if (!powered) row('상태', '<span class="no">전력 연결 필요</span>');
+        if (!road) row('상태', '<span class="no">도로에서 너무 멀음</span>');
+        else if (!powered) row('상태', '<span class="no">전력 필요</span>');
+        else if (!watered) row('상태', '<span class="no">상수도 필요</span>');
+        else if (!sewered) row('상태', '<span class="no">하수 처리 필요</span>');
         else if (demand <= 0) row('상태', '<span class="warn">수요 부족</span>');
         else row('상태', '<span class="ok">건설 대기 중</span>');
       }
-      row('도로 인접', yes(road, '인접', '없음'));
+      row('도로 접근', yes(road, `${manhattan(g, i)}칸 거리`, '없음'));
       row('전력', yes(powered, '공급 중', '끊김'));
+      row('상수도', yes(watered, '공급 중', '끊김'));
+      row('하수', yes(sewered, '처리 중', '끊김'));
       if (zt === 'R' && lv > 0) {
         const pol = Math.min(1, s.pollution[i]);
         row('오염도', pol > 0.05 ? `<span class="no">${Math.round(pol * 100)}%</span>` : '<span class="ok">깨끗함</span>');
       }
     } else if (k === K.ROAD) {
+      const t = ROAD_TYPES[g.roadType[i]];
+      title = t.name;
       const m = roadMask(g, x, y);
       const links = [1, 2, 4, 8].filter((b) => m & b).length;
       row('연결 방향', `${links}방향`);
+      row('구역 깊이', `${t.depth}칸`);
       row('전력망', yes(g.powered[i] === 1, '통전', '미연결'));
-      row('유지비', `₩${UPKEEP.road}/일`);
-    } else if (k === K.PLANT) {
-      const a = plantAnchorAt(g, x, y)!;
-      let linked = false;
-      for (let dy = -1; dy <= PLANT_SIZE; dy++) {
-        for (let dx = -1; dx <= PLANT_SIZE; dx++) {
-          const inside = dx >= 0 && dx < PLANT_SIZE && dy >= 0 && dy < PLANT_SIZE;
-          if (!inside && g.kindAt(a.x + dx, a.y + dy) === K.ROAD) linked = true;
-        }
-      }
-      row('상태', yes(true, '가동 중'));
+      row('수도망', yes(g.watered[i] === 1, '통수', '미연결'));
+      row('하수망', yes(g.sewered[i] === 1, '연결', '미연결'));
+      row('유지비', `₩${t.upkeep}/일`);
+    } else if (k === K.FAC) {
+      const f = facilityAt(g, x, y)!;
+      title = f.def.name;
+      const linked = g.powered[i] === 1 || g.watered[i] === 1 || g.sewered[i] === 1;
+      const cap = effectiveCapacity(s, f.def.id);
+      const unit = f.def.category === 'power' ? '전력' : f.def.category === 'water' ? '급수량' : '하수 처리량';
+      row(unit, `${cap.toFixed(1)} / ${f.def.capacity}`);
       row('도로 연결', yes(linked, '연결됨', '도로에 붙여 설치하세요'));
-      row('유지비', `₩${UPKEEP.plant}/일`);
-      row('건설 비용', `₩${COST.plant.toLocaleString('ko-KR')}`);
+      row('유지비', `₩${f.def.upkeep}/일`);
+      if (f.def.id === 5) row('지하수', `${Math.round(s.groundwater * 100)}%`);
+      if (f.def.id === 3) row('수질 오염', `${Math.round(s.waterPollution * 100)}%`);
+      rows.push(`<div class="hint">${f.def.desc}</div>`);
+    } else if (g.isWater(x, y)) {
+      title = '물';
+      row('상태', '건설 불가 (취수장·배출구는 물 타일 옆에)');
     } else {
       row('상태', '건설 가능');
     }
@@ -165,4 +180,10 @@ export class InfoPanel {
     this.lastHtml = html;
     this.el.innerHTML = html;
   }
+}
+
+function manhattan(g: GameState['grid'], i: number): number {
+  const r = g.access[i];
+  if (r < 0) return 0;
+  return Math.abs((r % g.size) - (i % g.size)) + Math.abs(((r / g.size) | 0) - ((i / g.size) | 0));
 }

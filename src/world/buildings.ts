@@ -1,27 +1,39 @@
 import { JOBS_PER_LEVEL, POP_PER_LEVEL, TAX_PER_LEVEL } from '../utils/constants';
+import { FACILITIES, FacilityDef } from '../data/catalog';
 import { Grid, K, Tile } from './grid';
 
-export const PLANT_SIZE = 2;
-
-export const plantFootprint = (ax: number, ay: number): Tile[] => {
+/** 시설 풋프린트 (앵커 = 좌상단) */
+export const facilityFootprint = (def: FacilityDef, ax: number, ay: number): Tile[] => {
   const out: Tile[] = [];
-  for (let dy = 0; dy < PLANT_SIZE; dy++) for (let dx = 0; dx < PLANT_SIZE; dx++) out.push({ x: ax + dx, y: ay + dy });
+  for (let dy = 0; dy < def.h; dy++) for (let dx = 0; dx < def.w; dx++) out.push({ x: ax + dx, y: ay + dy });
   return out;
 };
 
-/** 타일이 속한 발전소의 앵커(좌상단) 좌표. 발전소가 아니면 null */
-export function plantAnchorAt(g: Grid, x: number, y: number): Tile | null {
-  if (!g.inBounds(x, y)) return null;
-  const owner = g.plantOwner[g.idx(x, y)];
-  if (!owner) return null;
-  const i = owner - 1;
-  return { x: i % g.size, y: Math.floor(i / g.size) };
+export interface FacilityAt {
+  x: number;
+  y: number;
+  def: FacilityDef;
 }
 
-export function plantAnchors(g: Grid): Tile[] {
-  const out: Tile[] = [];
+/** 타일이 속한 시설(앵커 좌표 + 정의). 시설이 아니면 null */
+export function facilityAt(g: Grid, x: number, y: number): FacilityAt | null {
+  if (!g.inBounds(x, y)) return null;
+  const i = g.idx(x, y);
+  const owner = g.owner[i];
+  if (!owner || g.kind[i] !== K.FAC) return null;
+  const a = owner - 1;
+  const def = FACILITIES[g.fac[a]];
+  if (!def) return null;
+  return { x: a % g.size, y: Math.floor(a / g.size), def };
+}
+
+export function facilityList(g: Grid): FacilityAt[] {
+  const out: FacilityAt[] = [];
   for (let i = 0; i < g.count; i++) {
-    if (g.plantOwner[i] === i + 1) out.push({ x: i % g.size, y: Math.floor(i / g.size) });
+    if (g.kind[i] === K.FAC && g.owner[i] === i + 1) {
+      const def = FACILITIES[g.fac[i]];
+      if (def) out.push({ x: i % g.size, y: Math.floor(i / g.size), def });
+    }
   }
   return out;
 }
@@ -47,7 +59,7 @@ export const KIND_NAME: Record<number, string> = {
   [K.RES]: '주거 구역',
   [K.COM]: '상업 구역',
   [K.IND]: '공업 구역',
-  [K.PLANT]: '발전소',
+  [K.FAC]: '시설',
 };
 
 export const BUILDING_NAME: Record<number, string> = {

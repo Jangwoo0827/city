@@ -484,7 +484,7 @@ kbd {
   align-items: center;
   justify-content: center;
   background: rgba(5, 8, 16, 0.55);
-  z-index: 40;
+  z-index: 60;
   pointer-events: auto;
 }
 .modal-wrap.hidden {
@@ -579,23 +579,336 @@ kbd {
     padding: 0 6px;
   }
   #info {
-    top: auto;
-    bottom: 148px;
+    top: 152px;
+    bottom: auto;
     right: 8px;
-    width: 176px;
+    width: 168px;
     font-size: 12px;
   }
   .tool-btn {
     width: 58px;
   }
   #rci {
-    bottom: 148px;
+    top: 252px;
+    bottom: auto;
     left: 8px;
-    transform: scale(0.85);
-    transform-origin: bottom left;
+    transform: scale(0.82);
+    transform-origin: top left;
   }
   .toast {
     font-size: 13px;
     padding: 6px 12px;
+  }
+}
+
+/* ── 서브바 (구역·도로 종류·시설) ── */
+.subbar {
+  display: none;
+  gap: 6px;
+  padding: 5px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.subbar.show {
+  display: flex;
+}
+.sub-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 5px 10px;
+  font-size: 12.5px;
+  line-height: 1.25;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  text-align: left;
+}
+.sub-btn small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.sub-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.sub-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.sub-btn.locked {
+  opacity: 0.55;
+}
+.subbar .zone-btn {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.fac-group {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding-right: 8px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+.fac-group:last-child {
+  border-right: 0;
+  padding-right: 0;
+}
+.fac-cat {
+  align-self: center;
+  writing-mode: vertical-rl;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+}
+
+/* ── 마일스톤 칩 ── */
+#topbar .stat.level {
+  background: transparent;
+  border: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  border-radius: 8px;
+}
+#topbar .stat.level:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.xpbar {
+  display: block;
+  width: 96px;
+  height: 5px;
+  margin-top: 3px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.xpbar i {
+  display: block;
+  height: 100%;
+  background: #ffd166;
+}
+
+/* ── 공급 현황 / 오버레이 토글 ── */
+#utils {
+  position: fixed;
+  left: 14px;
+  bottom: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px;
+  min-width: 142px;
+}
+.util-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+.util-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.util-row.active {
+  border-color: var(--accent);
+  background: rgba(95, 176, 255, 0.18);
+}
+.util-row b {
+  font-variant-numeric: tabular-nums;
+}
+.util-row b.neg {
+  color: var(--bad);
+}
+
+/* ── 진행 패널 ── */
+.modal.progress {
+  width: min(760px, calc(100vw - 24px));
+  max-width: none;
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  padding: 16px 18px;
+}
+.p-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.p-head h3 {
+  margin: 0;
+  font-size: 17px;
+}
+.p-head small {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 6px;
+}
+.p-head .close {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 16px;
+}
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 10px 0;
+}
+.tab {
+  padding: 6px 14px;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+.tab.active {
+  background: rgba(95, 176, 255, 0.22);
+  border-color: var(--accent);
+}
+.p-body {
+  overflow: auto;
+  font-size: 13px;
+  padding-right: 4px;
+}
+.p-body h4 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.p-body .hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 4px 0;
+}
+.p-body .ok {
+  color: var(--good);
+}
+.p-body .muted {
+  color: var(--muted);
+}
+.p-body .row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+}
+.p-body .row b {
+  color: var(--text);
+}
+.p-body .bar {
+  height: 7px;
+  margin: 6px 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.p-body .bar i {
+  display: block;
+  height: 100%;
+  background: #ffd166;
+}
+.xp-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.mtable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+.mtable th,
+.mtable td {
+  padding: 4px 6px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.mtable th {
+  color: var(--muted);
+  font-weight: 500;
+}
+.mtable tr.done {
+  color: var(--muted);
+}
+.mtable tr.cur {
+  background: rgba(255, 209, 102, 0.12);
+}
+.node {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 9px;
+}
+.node .btn {
+  padding: 5px 12px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.fin-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.fin-grid div {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.fin-grid b {
+  color: var(--text);
+  font-size: 15px;
+}
+.fin-grid b.pos {
+  color: var(--good);
+}
+.fin-grid b.neg {
+  color: var(--bad);
+}
+.loan-btns {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+@media (max-width: 760px) {
+  #utils {
+    top: 150px;
+    bottom: auto;
+    left: 8px;
+    transform: scale(0.86);
+    transform-origin: top left;
+  }
+  .xpbar {
+    width: 64px;
+  }
+  .fin-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .mtable th:nth-child(n + 6),
+  .mtable td:nth-child(n + 6) {
+    display: none;
   }
 }

@@ -10,18 +10,16 @@ export const BANKRUPT_LIMIT = -5000;
 export const COST = {
   road: 12,
   zone: 6,
-  plant: 3000,
   demolish: 0, // 철거는 무료, 환급도 없음
 };
 
 /** 틱(1초)마다 나가는 유지비 */
 export const UPKEEP = {
   road: 0.2, // 도로 타일당
-  plant: 12, // 발전소당
 };
 
 /** 건물 레벨 1당, 틱마다 들어오는 세금 (행복도 보정 전) */
-export const TAX_PER_LEVEL = { R: 0.25, C: 0.45, I: 0.5 };
+export const TAX_PER_LEVEL = { R: 0.65, C: 1.2, I: 1.3 };
 /** 행복도에 따른 세수 배율: lerp(min, max, happiness/100) */
 export const TAX_HAPPY_MULT = { min: 0.5, max: 1.5 };
 
@@ -68,6 +66,8 @@ export const GROWTH = {
 export const HAPPINESS = {
   base: 62,
   noPowerPenalty: 35,
+  noWaterPenalty: 25,
+  noSewagePenalty: 15,
   pollutionPenalty: 30,
   unemploymentPenalty: 28,
   jobSurplusBonus: 10,
@@ -108,7 +108,51 @@ export const COLORS = {
   skyNight: 0x0a1230,
   ground: 0x86c46a,
   groundOuter: 0x6fae58,
+  water: 0x3d8fd1,
   zone: { R: 0x4caf50, C: 0x2f80ed, I: 0xf2c94c },
   okTile: 0x39d353,
   badTile: 0xf0443a,
+};
+
+// ── 맵 구획 (64×64 = 4×4 구획, 구획 하나는 16×16칸) ──────────────
+export const SECTION_SIZE = 16;
+export const SECTIONS_PER_SIDE = GRID_SIZE / SECTION_SIZE;
+/** 시작 시 열려 있는 구획(중앙 2×2 = 32×32칸) 인덱스 */
+export const START_SECTIONS = [5, 6, 9, 10];
+/** 구획 구매 비용 = base × (1 + 구매한 구획 수 × growth) */
+export const SECTION_COST = { base: 2000, growth: 0.6 };
+
+// ── XP (마일스톤 진행) ─────────────────────────────────
+export const XP_AWARD = {
+  road: 2, // 도로 1칸
+  building: 10, // 건물 생성
+  levelUp: 6, // 건물 레벨업 (× 새 레벨)
+  facility: 30, // 시설 건설
+  per100Pop: 0.5, // 시민 100명당 매 틱
+};
+
+// ── 대출 ──────────────────────────────────────────────
+export const LOAN = {
+  /** 한 번에 빌리거나 갚는 단위 */
+  step: 5000,
+  /** 대출 잔액에 대한 일 이자율 */
+  interestPerDay: 0.0005,
+};
+
+// ── 상하수도 ──────────────────────────────────────────
+export const GROUNDWATER = {
+  /** 우물 가동률 1.0일 때 틱당 감소량 (0~1 저장량) */
+  drain: 0.004,
+  regen: 0.0008,
+  /** 이 이하로 떨어지면 우물 가동 중단 */
+  minToRun: 0.05,
+};
+export const WATER_POLLUTION = {
+  /** 무처리 방류량 1당 틱마다 늘어나는 오염도 (적은 양은 자연 정화로 상쇄됨) */
+  risePerFlow: 0.00012,
+  decay: 0.002,
+  /** 오염도 1.0일 때 지표수 취수 용량 감소 비율 */
+  intakePenalty: 0.6,
+  /** 오염도 1.0일 때 행복도 감소 */
+  happyPenalty: 20,
 };

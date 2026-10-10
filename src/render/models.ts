@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { K } from '../world/grid';
-import { box, boxOnGround, cylinder, merge, pyramidRoof, windowQuad } from './geometry';
+import { boxOnGround, cylinder, merge, pyramidRoof, windowQuad } from './geometry';
+import { buildFacilityModels } from './facilityModels';
 
 export interface BuildingModel {
   body: THREE.BufferGeometry;
@@ -128,28 +129,6 @@ function industrial(level: number): BuildingModel {
   return { body: merge(parts), windows: merge(win) };
 }
 
-/** 2x2 발전소 (원점 = 발전소 중심) */
-function plant(): BuildingModel {
-  const parts: THREE.BufferGeometry[] = [];
-  parts.push(box(1.86, 0.08, 1.86, 0, 0.04, 0, 0x8d949c));
-  parts.push(boxOnGround(1.0, 0.62, 0.7, -0.45, 0.08, -0.5, 0xc7ccd3));
-  parts.push(boxOnGround(1.04, 0.05, 0.74, -0.45, 0.7, -0.5, 0x5f6670));
-  // 냉각탑
-  parts.push(cylinder(0.3, 0.9, 0.5, 0.08, 0.35, 0xe9ecef, 14, 0.2));
-  parts.push(cylinder(0.2, 0.04, 0.5, 0.98, 0.35, 0x8d949c, 14));
-  // 굴뚝 (적백 줄무늬)
-  parts.push(cylinder(0.075, 0.5, -0.65, 0.08, 0.45, 0xd9534f, 10, 0.065));
-  parts.push(cylinder(0.065, 0.45, -0.65, 0.58, 0.45, 0xf4f4f4, 10, 0.055));
-  parts.push(cylinder(0.055, 0.35, -0.65, 1.03, 0.45, 0xd9534f, 10, 0.045));
-  // 변압기·송전탑 느낌의 작은 박스
-  parts.push(boxOnGround(0.3, 0.2, 0.3, 0.35, 0.08, -0.55, 0x4d5560));
-  parts.push(boxOnGround(0.2, 0.28, 0.2, -0.2, 0.08, 0.5, 0x4d5560));
-  // 발전소 창: 건물 정면에 가는 띠
-  const win: THREE.BufferGeometry[] = [];
-  for (let c = 0; c < 4; c++) win.push(windowQuad(0.16, 0.12, -0.8 + c * 0.24, 0.4, -0.5 + 0.35 + WIN_OUT, 0));
-  return { body: merge(parts), windows: merge(win) };
-}
-
 export type ModelKey = string;
 export const modelKey = (kind: number, level: number): ModelKey => `${kind}:${level}`;
 
@@ -160,6 +139,6 @@ export function buildAllModels(): Map<ModelKey, BuildingModel> {
     map.set(modelKey(K.COM, lv), commercial(lv));
     map.set(modelKey(K.IND, lv), industrial(lv));
   }
-  map.set(modelKey(K.PLANT, 1), plant());
+  for (const [id, model] of buildFacilityModels()) map.set(modelKey(K.FAC, id), model);
   return map;
 }

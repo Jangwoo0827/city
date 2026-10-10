@@ -1,11 +1,14 @@
 import './ui/styles.css';
 import { GameState } from './game/state';
 import { tick, refreshStats } from './game/simulation';
+import { applyAction } from './game/actions';
+import { buySection, isSectionAdjacent, sectionCost } from './game/progression';
 import { GameView } from './render/scene';
 import { ToolController, createToolbar } from './ui/toolbar';
 import { InputController } from './ui/input';
 import { InfoPanel, Tooltip } from './ui/panels';
 import { Hud, confirmDialog } from './ui/hud';
+import { ProgressPanel } from './ui/progress';
 import { hasSave, loadGame, saveGame } from './utils/save';
 import { AUTOSAVE_SECONDS } from './utils/constants';
 
@@ -17,10 +20,15 @@ const view = new GameView(canvas, state);
 const tools = new ToolController();
 const tip = new Tooltip(ui);
 const info = new InfoPanel(ui, state, (fp) => view.setSelection(fp));
-createToolbar(ui, tools);
+const toolbar = createToolbar(ui, tools, state);
+
+const progress = new ProgressPanel(ui, state, () => {
+  toolbar.refresh();
+  hud.update();
+});
 
 let lastSpeed = 1;
-const hud = new Hud(ui, state, {
+const hud: Hud = new Hud(ui, state, {
   onSpeed: (sp) => {
     if (state.gameOver) return;
     state.speed = sp;
@@ -44,6 +52,8 @@ const hud = new Hud(ui, state, {
     } else state.toast('저장 데이터를 불러올 수 없습니다', 'bad');
   },
   hasSave,
+  onOpenProgress: () => progress.toggle(),
+  onOverlay: (mode) => view.city.setServiceMode(mode),
 });
 
 function startNewGame(): void {
@@ -52,7 +62,7 @@ function startNewGame(): void {
   saveGame(state);
   hud.hideGameOver();
   hud.update();
-  state.toast('도로를 깔고 → 구역을 지정하고 → 발전소를 연결해 보세요!', 'info');
+  state.toast('도로를 깔고 → 취수장·하수 배출구·풍력 터빈을 연결한 뒤 → 구역을 지정해 보세요!', 'info');
 }
 
 const togglePause = (): void => {
@@ -68,14 +78,39 @@ const togglePause = (): void => {
 const input = new InputController(view, state, tools, tip, {
   onSelect: (tile) => info.select(tile),
   onTogglePause: togglePause,
+  onLockedSection: async (section) => {
+    if (!isSectionAdjacent(state, section)) {
+      state.toast('해금된 구획과 맞닿은 구획만 살 수 있습니다', 'bad');
+      return;
+    }
+    const cost = sectionCost(state);
+    if (!(await confirmDialog(ui, `이 구획(16×16칸)을 ₩${cost.toLocaleString('ko-KR')}에 해금할까요?`, '해금'))) return;
+    const r = buySection(state, section);
+    state.toast(r.message, r.ok ? 'good' : 'bad');
+    hud.update();
+  },
 });
 
-state.on('reset', () => view.city.resetAnimations());
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyM' && !e.repeat) progress.toggle();
+});
+
+state.on('reset', () => {
+  view.city.resetAnimations();
+  view.city.setServiceMode('none');
+  toolbar.refresh();
+  hud.update();
+});
+state.on('levelup', () => {
+  toolbar.refresh();
+  hud.update();
+});
+
 refreshStats(state);
 if (loadGame(state)) {
   state.toast('📂 저장된 도시를 불러왔습니다', 'good');
 } else {
-  state.toast('도로를 깔고 → 구역을 지정하고 → 발전소를 연결해 보세요!', 'info');
+  state.toast('도로를 깔고 → 취수장·하수 배출구·풍력 터빈을 연결한 뒤 → 구역을 지정해 보세요!', 'info');
 }
 hud.update();
 
@@ -88,7 +123,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') autosave();
 });
 
-if (import.meta.env.DEV) (window as unknown as { __game: unknown }).__game = { state, view, tools, tick };
+if (import.meta.env.DEV) (window as unknown as { __game: unknown }).__game = { state, view, tools, tick, applyAction };
 
 // ── 시뮬레이션: 렌더링(rAF)과 분리 ──────────────────────
 // 다른 탭/창을 보는 동안에는 rAF 가 멈추므로 타이머로 계속 진행하고,
@@ -101,7 +136,7 @@ let autosaveTimer = 0;
 
 function advance(): void {
   const now = performance.now();
-  const elapsed = Math.min(MAX_CATCHUP_SECONDS, (now - lastSim) / 1000);
+  const elapsed = Math.max(0, Math.min(MAX_CATCHUP_SECONDS, (now - lastSim) / 1000));
   lastSim = now;
 
   if (state.speed > 0 && !state.gameOver) {
@@ -125,6 +160,7 @@ setInterval(advance, 250);
 
 let last = performance.now();
 let infoTimer = 0;
+let toolbarTimer = 0;
 function frame(now: number): void {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
@@ -136,6 +172,11 @@ function frame(now: number): void {
     infoTimer = 0;
     info.render();
     hud.update();
+  }
+  toolbarTimer += dt;
+  if (toolbarTimer > 1) {
+    toolbarTimer = 0;
+    toolbar.refresh();
   }
 
   input.update(dt);
