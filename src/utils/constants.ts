@@ -3,7 +3,7 @@
 export const GRID_SIZE = 64;
 
 // ── 경제 ──────────────────────────────────────────────
-export const START_MONEY = 20000;
+export const START_MONEY = 30000;
 export const BANKRUPT_LIMIT = -5000;
 
 /** 설치 비용 (타일당 / 건물당) */
@@ -26,9 +26,9 @@ export const UPKEEP = {
 };
 
 /** 건물 레벨 1당, 틱마다 들어오는 세금 (행복도 보정 전) */
-export const TAX_PER_LEVEL = { R: 0.65, C: 1.2, I: 1.3 };
+export const TAX_PER_LEVEL = { R: 0.9, C: 1.7, I: 1.8 };
 /** 행복도에 따른 세수 배율: lerp(min, max, happiness/100) */
-export const TAX_HAPPY_MULT = { min: 0.5, max: 1.5 };
+export const TAX_HAPPY_MULT = { min: 0.75, max: 1.25 };
 
 // ── 시뮬레이션 ─────────────────────────────────────────
 export const DAYS_PER_MONTH = 30;
@@ -61,7 +61,7 @@ export const DEMAND = {
 
 export const GROWTH = {
   /** 빈 구역 타일이 한 틱에 건물로 바뀔 확률 = spawnChance * 수요 */
-  spawnChance: 0.05,
+  spawnChance: 0.07,
   maxSpawnPerTick: 3,
   /** 레벨업 진행도 증가량/틱 = base + perDemand * 수요 (1.0 도달 시 레벨업) */
   levelBase: 0.012,
@@ -72,11 +72,11 @@ export const GROWTH = {
 
 export const HAPPINESS = {
   base: 62,
-  noPowerPenalty: 35,
-  noWaterPenalty: 25,
-  noSewagePenalty: 15,
+  noPowerPenalty: 25,
+  noWaterPenalty: 20,
+  noSewagePenalty: 10,
   pollutionPenalty: 30,
-  unemploymentPenalty: 28,
+  unemploymentPenalty: 20,
   jobSurplusBonus: 10,
   /** 목표치를 향해 틱마다 이동하는 비율 */
   smoothing: 0.1,
@@ -156,10 +156,10 @@ export const GROUNDWATER = {
 };
 export const WATER_POLLUTION = {
   /** 무처리 방류량 1당 틱마다 늘어나는 오염도 (적은 양은 자연 정화로 상쇄됨) */
-  risePerFlow: 0.00012,
+  risePerFlow: 0.00004,
   decay: 0.002,
   /** 오염도 1.0일 때 지표수 취수 용량 감소 비율 */
-  intakePenalty: 0.6,
+  intakePenalty: 0.4,
   /** 오염도 1.0일 때 행복도 감소 */
-  happyPenalty: 20,
+  happyPenalty: 12,
 };

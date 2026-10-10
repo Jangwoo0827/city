@@ -109,6 +109,8 @@ export class GameState {
   groundwater = 1;
   /** 수질 오염도 0..1 */
   waterPollution = 0;
+  /** 수질 경고를 이미 띄웠는지 (저장하지 않음) */
+  waterWarned = false;
 
   /** 렌더러/시뮬레이션이 읽고 지우는 변경 플래그 */
   dirty = { roads: true, zones: true, buildings: true, net: true, sections: true };

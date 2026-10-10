@@ -148,7 +148,7 @@ describe('전력·상수도·하수 네트워크', () => {
     s.money = 50000;
     const supply = s.stats.powerSupply;
     applyAction(s, 'facility', opts({ facility: FAC.COAL }), { x: 28, y: 17 }, { x: 28, y: 17 });
-    expect(s.stats.powerSupply).toBe(supply + 40);
+    expect(s.stats.powerSupply).toBe(supply + 80);
   });
 
   it('무처리 방류는 수질을 오염시키고, 처리장이 있으면 오염되지 않는다', () => {

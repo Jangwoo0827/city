@@ -12,11 +12,11 @@ export interface DevNode {
 }
 
 export const DEV_NODES: DevNode[] = [
-  { id: 'fac_coal', name: '석탄 발전소', group: '전력', cost: 1, level: 0, desc: '용량 40의 대형 발전소. 풍력보다 용량 대비 훨씬 저렴하지만 오염이 있습니다.' },
+  { id: 'fac_coal', name: '석탄 발전소', group: '전력', cost: 1, level: 0, desc: '용량 80의 대형 발전소. 풍력보다 용량 대비 훨씬 저렴하지만 오염이 있습니다.' },
   { id: 'road_medium', name: '중형 도로 (4차로)', group: '도로', cost: 1, level: 1, desc: '유지비는 높지만 교통·전송 용량이 큰 4차로 도로.' },
   { id: 'fac_tower', name: '급수탑', group: '상수도', cost: 1, level: 1, desc: '수원이 없는 곳에도 설치할 수 있는 급수 시설.' },
   { id: 'fac_well', name: '지하수 우물', group: '상수도', cost: 1, level: 1, desc: '저렴하지만 지하수가 고갈되면 가동할 수 없습니다.' },
-  { id: 'fac_treatment', name: '폐수 처리장', group: '하수', cost: 2, level: 2, desc: '하수를 정화해 수질 오염을 막습니다.' },
+  { id: 'fac_treatment', name: '폐수 처리장', group: '하수', cost: 2, level: 1, desc: '하수를 정화해 수질 오염을 막습니다.' },
   { id: 'road_large', name: '대형 도로 (6차로)', group: '도로', cost: 2, level: 3, desc: '구역을 양옆 6칸까지 지정할 수 있는 간선 도로.' },
 ];
 

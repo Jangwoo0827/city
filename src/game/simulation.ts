@@ -180,6 +180,10 @@ export function tick(s: GameState): void {
   refreshStats(s);
   const xp = grow(s);
   updateEnvironment(s);
+  if (s.waterPollution > 0.3 && !s.waterWarned) {
+    s.waterWarned = true;
+    s.toast('⚠️ 수질이 오염되고 있습니다. 폐수 처리장을 지으세요 (개발 트리)', 'bad');
+  } else if (s.waterPollution < 0.1) s.waterWarned = false;
 
   // 행복도는 목표치를 향해 서서히 이동
   s.happiness = lerp(s.happiness, s.happinessTarget, HAPPINESS.smoothing);
