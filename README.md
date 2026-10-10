@@ -74,6 +74,10 @@ Node.js 18 이상을 권장합니다.
 - `localStorage`에 **30초마다 자동 저장**되고, 탭을 닫거나 새로고침할 때도 저장됩니다. 접속하면 저장된 도시가 자동으로 복원됩니다.
 - 우측 상단 `☰` 메뉴에서 수동 저장 / 불러오기 / 새 게임 / 도움말을 사용할 수 있습니다.
 
+## 배포
+
+GitHub Pages 로 자동 배포됩니다 (`.github/workflows/deploy.yml`, `main` 푸시 시 빌드). 확장 계획은 [docs/ROADMAP.md](docs/ROADMAP.md) 를 참고하세요.
+
 ## 밸런스 조정
 
 비용, 세금, 성장 속도, 수요 공식 가중치, 행복도 계수, 카메라/연출 수치는 모두 [`src/utils/constants.ts`](src/utils/constants.ts) 한 곳에 모여 있습니다.
