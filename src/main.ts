@@ -80,7 +80,6 @@ if (loadGame(state)) {
 hud.update();
 
 // 자동 저장: 30초마다 + 탭을 닫거나 새로고침/숨길 때
-let autosaveTimer = 0;
 const autosave = (): void => {
   if (!state.gameOver) saveGame(state);
 };
@@ -91,31 +90,46 @@ document.addEventListener('visibilitychange', () => {
 
 if (import.meta.env.DEV) (window as unknown as { __game: unknown }).__game = { state, view, tools, tick };
 
-let last = performance.now();
+// ── 시뮬레이션: 렌더링(rAF)과 분리 ──────────────────────
+// 다른 탭/창을 보는 동안에는 rAF 가 멈추므로 타이머로 계속 진행하고,
+// 브라우저가 타이머를 늦추더라도 실제 경과 시간만큼 틱을 따라잡는다.
+const MAX_CATCHUP_SECONDS = 600;
+const MAX_STEPS_PER_CALL = 600;
+let lastSim = performance.now();
 let simAcc = 0;
-let infoTimer = 0;
-function frame(now: number): void {
-  const rawDt = (now - last) / 1000;
-  const dt = Math.min(0.1, rawDt);
-  last = now;
+let autosaveTimer = 0;
 
-  // 시뮬레이션: 1초 = 1틱 × 배속
+function advance(): void {
+  const now = performance.now();
+  const elapsed = Math.min(MAX_CATCHUP_SECONDS, (now - lastSim) / 1000);
+  lastSim = now;
+
   if (state.speed > 0 && !state.gameOver) {
-    simAcc += Math.min(1, rawDt) * state.speed;
+    simAcc += elapsed * state.speed;
     let steps = 0;
-    while (simAcc >= 1 && steps < 6) {
+    while (simAcc >= 1 && steps < MAX_STEPS_PER_CALL && !state.gameOver) {
       tick(state);
       simAcc -= 1;
       steps++;
     }
-    if (steps === 6) simAcc = 0;
+    if (steps === MAX_STEPS_PER_CALL) simAcc = 0;
   }
 
-  autosaveTimer += rawDt;
+  autosaveTimer += elapsed;
   if (autosaveTimer >= AUTOSAVE_SECONDS) {
     autosaveTimer = 0;
     autosave();
   }
+}
+setInterval(advance, 250);
+
+let last = performance.now();
+let infoTimer = 0;
+function frame(now: number): void {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+
+  advance();
 
   infoTimer += dt;
   if (infoTimer > 0.25) {

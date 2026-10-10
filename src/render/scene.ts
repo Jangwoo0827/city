@@ -142,7 +142,7 @@ export class GameView {
 
   render(dt: number, time: number): void {
     this.rig.update(dt);
-    this.daynight.update(dt);
+    this.daynight.update();
     this.city.sync(time);
     this.cars.update(dt);
     this.renderer.render(this.scene, this.rig.camera);

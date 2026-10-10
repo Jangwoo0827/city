@@ -21,6 +21,7 @@ export class DayNight {
   night = 0;
 
   private readonly c = new THREE.Color();
+  private lastT = performance.now();
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -31,8 +32,11 @@ export class DayNight {
     this.apply();
   }
 
-  update(dt: number): void {
-    this.phase = (this.phase + dt / DAY_LENGTH_SECONDS) % 1;
+  /** 낮/밤은 실제 경과 시간 기준 (탭이 가려져 있던 시간도 반영) */
+  update(): void {
+    const now = performance.now();
+    this.phase = (this.phase + (now - this.lastT) / 1000 / DAY_LENGTH_SECONDS) % 1;
+    this.lastT = now;
     this.apply();
   }
 
