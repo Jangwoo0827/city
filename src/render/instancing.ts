@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { BUILD_ANIM_SECONDS, COLORS, GRID_SIZE, SECTION_SIZE, SECTIONS_PER_SIDE } from '../utils/constants';
+import { ZONE_BY_KIND } from '../data/zones';
 import { clamp, easeOutBack, hash01 } from '../utils/math';
 import { FACILITIES, ROAD_TYPES, RoadTypeDef } from '../data/catalog';
 import { GameState } from '../game/state';
 import { isSectionAdjacent } from '../game/progression';
 import { DIRS, K, T, isZoneKind } from '../world/grid';
 import { roadMask } from '../world/roads';
-import { box, merge } from './geometry';
+import { box, cylinder as cylinderGeo, merge } from './geometry';
 import { BuildingModel, ModelKey, buildAllModels, modelKey } from './models';
 
 const CAP = GRID_SIZE * GRID_SIZE;
@@ -22,7 +23,10 @@ const ROAD_H = 0.065;
 const WINDOW_DAY = new THREE.Color(0x7d9cb8);
 const WINDOW_NIGHT = new THREE.Color(0xffd88a);
 
-export type ServiceMode = 'none' | 'power' | 'water' | 'sewage' | 'health' | 'police' | 'fire' | 'park';
+export type ServiceMode = 'none' | 'power' | 'water' | 'sewage' | 'health' | 'police' | 'fire' | 'park' | 'edu1' | 'edu2' | 'edu3' | 'land';
+
+/** 다리 상판 높이 */
+export const BRIDGE_LIFT = 0.08;
 
 /** 이웃 연결 비트마스크(북1 동2 남4 서8)와 도로 종류로 도로 타일 모양을 생성 */
 function buildRoadGeometry(mask: number, type: RoadTypeDef): THREE.BufferGeometry {
@@ -64,6 +68,21 @@ function buildRoadGeometry(mask: number, type: RoadTypeDef): THREE.BufferGeometr
   return merge(parts);
 }
 
+/** 다리 난간: 이웃 도로가 없는 변마다 타일 가장자리에 난간을 세운다 */
+function buildRailGeometry(mask: number): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const RAIL = 0xcfd3d8;
+  const y = 0.05 + 0.05;
+  for (let d = 0; d < 4; d++) {
+    if (mask & (1 << d)) continue;
+    const [dx, dz] = DIRS[d];
+    const horizontal = dx !== 0;
+    parts.push(box(horizontal ? 0.035 : 1, 0.09, horizontal ? 1 : 0.035, dx * 0.47, y, dz * 0.47, RAIL));
+  }
+  if (parts.length === 0) parts.push(box(0.001, 0.001, 0.001, 0, -5, 0, RAIL)); // 빈 지오메트리 방지
+  return merge(parts);
+}
+
 /** 커버리지 0~1 → 빨강 · 노랑 · 초록 */
 function heat(c: THREE.Color, v: number): THREE.Color {
   const t = clamp(v, 0, 1);
@@ -89,6 +108,9 @@ export class CityMeshes {
 
   /** [도로 종류][마스크] */
   private readonly roadMeshes: THREE.InstancedMesh[][] = [];
+  /** 다리 난간(마스크별)과 교각 */
+  private readonly railMeshes: THREE.InstancedMesh[] = [];
+  private pierMesh: THREE.InstancedMesh;
   private readonly zoneMesh: THREE.InstancedMesh;
   private readonly zoneMat: THREE.MeshBasicMaterial;
   private readonly bodyMeshes = new Map<ModelKey, THREE.InstancedMesh>();
@@ -129,6 +151,21 @@ export class CityMeshes {
       }
       this.roadMeshes.push(row);
     }
+    const railMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    for (let mask = 0; mask < 16; mask++) {
+      const rail = makeInstanced(buildRailGeometry(mask), railMat, 64, `rail-${mask}`);
+      rail.castShadow = true;
+      this.railMeshes.push(rail);
+      this.group.add(rail);
+    }
+    this.pierMesh = makeInstanced(
+      merge([cylinderGeo(0.09, 0.45, 0, -0.37, 0, 0x7b8089)]),
+      railMat,
+      64,
+      'bridge-piers',
+    );
+    this.pierMesh.castShadow = true;
+    this.group.add(this.pierMesh);
 
     // 구역 바닥 표시
     this.zoneMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5, depthWrite: false });
@@ -302,27 +339,43 @@ export class CityMeshes {
   private rebuildRoads(): void {
     const g = this.state.grid;
     const counts = ROAD_TYPES.map(() => new Array<number>(16).fill(0));
+    const railCounts = new Array<number>(16).fill(0);
+    let piers = 0;
     // 1) 개수를 세어 용량 확보
     for (let y = 0; y < g.size; y++) {
       for (let x = 0; x < g.size; x++) {
         const i = g.idx(x, y);
         if (g.kind[i] !== K.ROAD) continue;
-        counts[Math.min(g.roadType[i], ROAD_TYPES.length - 1)][roadMask(g, x, y)]++;
+        const mask = roadMask(g, x, y);
+        counts[Math.min(g.roadType[i], ROAD_TYPES.length - 1)][mask]++;
+        if (g.terrain[i] === T.WATER) {
+          railCounts[mask]++;
+          piers++;
+        }
       }
     }
     for (let t = 0; t < ROAD_TYPES.length; t++) {
       for (let mask = 0; mask < 16; mask++) this.roadMeshes[t][mask] = this.grow(this.roadMeshes[t][mask], counts[t][mask]);
     }
+    for (let mask = 0; mask < 16; mask++) this.railMeshes[mask] = this.grow(this.railMeshes[mask], railCounts[mask]);
+    this.pierMesh = this.grow(this.pierMesh, piers);
     counts.forEach((row) => row.fill(0));
-    // 2) 채우기
+    railCounts.fill(0);
+    let pierN = 0;
+    // 2) 채우기 (물 위 도로는 상판을 띄우고 난간·교각을 추가)
     for (let y = 0; y < g.size; y++) {
       for (let x = 0; x < g.size; x++) {
         const i = g.idx(x, y);
         if (g.kind[i] !== K.ROAD) continue;
         const mask = roadMask(g, x, y);
         const t = Math.min(g.roadType[i], ROAD_TYPES.length - 1);
-        this.m.makeTranslation(x + 0.5, 0, y + 0.5);
+        const bridge = g.terrain[i] === T.WATER;
+        this.m.makeTranslation(x + 0.5, bridge ? BRIDGE_LIFT : 0, y + 0.5);
         this.roadMeshes[t][mask].setMatrixAt(counts[t][mask]++, this.m);
+        if (bridge) {
+          this.railMeshes[mask].setMatrixAt(railCounts[mask]++, this.m);
+          this.pierMesh.setMatrixAt(pierN++, this.m);
+        }
       }
     }
     for (let t = 0; t < ROAD_TYPES.length; t++) {
@@ -332,6 +385,13 @@ export class CityMeshes {
         mesh.instanceMatrix.needsUpdate = true;
       }
     }
+    for (let mask = 0; mask < 16; mask++) {
+      const rail = this.railMeshes[mask];
+      rail.count = railCounts[mask];
+      rail.instanceMatrix.needsUpdate = true;
+    }
+    this.pierMesh.count = pierN;
+    this.pierMesh.instanceMatrix.needsUpdate = true;
   }
 
   private rebuildZones(): void {
@@ -346,7 +406,7 @@ export class CityMeshes {
       this.zoneMesh.setMatrixAt(n, this.m);
       this.zoneMesh.setColorAt(
         n,
-        this.tmpColor.setHex(k === K.RES ? COLORS.zone.R : k === K.COM ? COLORS.zone.C : COLORS.zone.I),
+        this.tmpColor.setHex(ZONE_BY_KIND[k]?.color ?? COLORS.zone.R),
       );
       n++;
     }
@@ -390,11 +450,23 @@ export class CityMeshes {
   private rebuildServiceOverlay(): void {
     const g = this.state.grid;
     const mode = this.serviceMode;
-    const cov = mode === 'health' || mode === 'police' || mode === 'fire' || mode === 'park' ? this.state.cov[mode] : null;
+    const cov = mode in this.state.cov ? this.state.cov[mode as keyof typeof this.state.cov] : null;
+    const land = mode === 'land';
     const arr = mode === 'power' ? g.powered : mode === 'water' ? g.watered : g.sewered;
     let n = 0;
     for (let i = 0; i < g.count; i++) {
       const k = g.kind[i];
+      if (land) {
+        if (g.terrain[i] === T.WATER) continue;
+        const lx = i % g.size;
+        const ly = (i / g.size) | 0;
+        if (!this.state.isUnlockedAt(lx, ly)) continue;
+        this.m.makeTranslation(lx + 0.5, 0.12, ly + 0.5);
+        this.serviceMesh.setMatrixAt(n, this.m);
+        this.serviceMesh.setColorAt(n, heat(this.tmpColor, g.landValue[i] / 100));
+        n++;
+        continue;
+      }
       if (cov) {
         // 커버리지: 건물·도로는 항상, 빈 땅은 커버되는 곳만 표시
         if (k === K.EMPTY && cov[i] < 0.03) continue;
@@ -499,9 +571,11 @@ export class CityMeshes {
       counts.set(key, idx + 1);
       const body = this.bodyMeshes.get(key)!;
       body.setMatrixAt(idx, d.matrix);
-      this.tmpColor.setScalar(0.9 + 0.2 * hash01(i * 31 + g.variant[i]));
+      const dead = g.abandoned[i] === 1;
+      this.tmpColor.setScalar(dead ? 0.26 : 0.9 + 0.2 * hash01(i * 31 + g.variant[i]));
       body.setColorAt(idx, this.tmpColor);
-      this.windowMeshes.get(key)?.setMatrixAt(idx, d.matrix);
+      // 폐허는 창에 불이 켜지지 않는다 (크기 0 인스턴스)
+      this.windowMeshes.get(key)?.setMatrixAt(idx, dead ? this.m.makeScale(0, 0, 0) : d.matrix);
     }
 
     for (const [key, body] of this.bodyMeshes) {

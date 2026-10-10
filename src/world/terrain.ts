@@ -43,4 +43,18 @@ export function generateTerrain(g: Grid): void {
   ellipse(GRID_SIZE - 30, GRID_SIZE - 26, 5, 4); // 남동 호수
   ellipse(GRID_SIZE / 2, 10, 4, 3); // 북쪽 연못
   ellipse(GRID_SIZE / 2 + 4, GRID_SIZE - 10, 4, 3); // 남쪽 연못
+
+  // 수변(물에서 3칸 이내) 표시 — 땅값 보너스용
+  g.waterNear.fill(0);
+  for (let y = 0; y < g.size; y++) {
+    for (let x = 0; x < g.size; x++) {
+      if (g.terrain[g.idx(x, y)] !== T.WATER) continue;
+      for (let dy = -3; dy <= 3; dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          if (Math.abs(dx) + Math.abs(dy) > 3 || !g.inBounds(x + dx, y + dy)) continue;
+          g.waterNear[g.idx(x + dx, y + dy)] = 1;
+        }
+      }
+    }
+  }
 }

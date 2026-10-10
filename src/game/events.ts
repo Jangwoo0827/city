@@ -47,6 +47,7 @@ export function updateFires(s: GameState): void {
     } else {
       g.level[i] = 0;
       g.progress[i] = 0;
+      g.abandoned[i] = 0;
       s.dirty.buildings = true;
       s.toast('🏚️ 화재로 건물이 소실되었습니다', 'bad');
     }

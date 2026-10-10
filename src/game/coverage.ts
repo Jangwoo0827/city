@@ -1,6 +1,5 @@
 import { SERVICE_CATEGORIES, isServiceCategory } from '../data/catalog';
-import { HEALTH } from '../utils/constants';
-import { K } from '../world/grid';
+import { isResidentialKind } from '../world/grid';
 import { buildingStats, facilityList } from '../world/buildings';
 import { GameState } from './state';
 
@@ -38,12 +37,12 @@ export function computeCoverage(s: GameState): void {
       for (let y = y0; y <= y1; y++) {
         for (let x = x0; x <= x1; x++) {
           const i = g.idx(x, y);
-          if (g.kind[i] !== K.RES || g.level[i] === 0) continue;
-          if (Math.hypot(x - cx, y - cy) <= r + 1) pop += buildingStats(K.RES, g.level[i]).pop;
+          if (!isResidentialKind(g.kind[i]) || g.level[i] === 0 || g.abandoned[i]) continue;
+          if (Math.hypot(x - cx, y - cy) <= r + 1) pop += buildingStats(g.kind[i], g.level[i]).pop;
         }
       }
     }
-    const patients = pop * HEALTH.patientRate;
+    const patients = pop * (def.usage ?? 1);
     const eff = def.capacity > 0 ? Math.min(1, def.capacity / Math.max(patients, 1)) : 1;
     s.serviceLoad.set(g.idx(f.x, f.y), { pop, patients, eff });
 

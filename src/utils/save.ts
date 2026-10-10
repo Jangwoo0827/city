@@ -29,6 +29,10 @@ export interface SaveV2 {
   progress: string;
   variant: string;
   roadType: string;
+  /** 폐허 레이어 (구버전 저장에는 없음) */
+  abandoned?: string;
+  /** 시민 교육 이수율 [초등, 고등, 대학] (구버전 저장에는 없음) */
+  edu?: [number, number, number];
   /** [x, y, 시설 id] 반복 */
   facilities: number[];
   savedAt: number;
@@ -97,6 +101,8 @@ export function serializeGame(s: GameState): SaveV2 {
     progress: toB64(progress),
     variant: toB64(g.variant),
     roadType: toB64(g.roadType),
+    abandoned: toB64(g.abandoned),
+    edu: [s.edu.a1, s.edu.a2, s.edu.a3],
     facilities,
     savedAt: Date.now(),
   };
@@ -185,16 +191,18 @@ export function deserializeGame(s: GameState, raw: unknown): boolean {
     const progress = decodeLayer(d.progress, g.count, g.size).data;
     const variant = decodeLayer(d.variant, g.count, g.size).data;
     const roadType = decodeLayer(d.roadType, g.count, g.size).data;
+    const abandonedL = d.abandoned ? decodeLayer(d.abandoned, g.count, g.size).data : null;
     if (!Number.isFinite(d.money) || !Number.isFinite(d.tick)) return false;
 
     g.clear();
     for (let i = 0; i < g.count; i++) {
       const k = kind[i];
-      g.kind[i] = k >= K.FAC ? K.EMPTY : k;
+      g.kind[i] = k === K.FAC || k > K.COMH ? K.EMPTY : k;
       g.level[i] = g.kind[i] >= K.RES ? Math.min(3, lvl[i]) : 0;
       g.progress[i] = progress[i] / 255;
       g.variant[i] = variant[i];
       g.roadType[i] = g.kind[i] === K.ROAD ? Math.min(2, roadType[i]) : 0;
+      g.abandoned[i] = abandonedL && g.level[i] > 0 ? abandonedL[i] : 0;
     }
     for (let n = 0; n + 2 < d.facilities.length; n += 3) {
       const ax = d.facilities[n] + (legacy ? LEGACY_OFFSET : 0);
@@ -244,6 +252,8 @@ export function deserializeGame(s: GameState, raw: unknown): boolean {
     for (const i of START_SECTIONS) s.sections[i] = 1;
     s.groundwater = clamp(d.groundwater, 0, 1);
     s.waterPollution = clamp(d.waterPollution, 0, 1);
+    const e = d.edu ?? [0, 0, 0];
+    s.edu = { a1: clamp(e[0], 0, 1), a2: clamp(e[1], 0, 1), a3: clamp(e[2], 0, 1) };
     s.markAllDirty();
     s.emit('reset');
     refreshStats(s);

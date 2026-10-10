@@ -22,11 +22,11 @@ export const ROAD_TYPES: RoadTypeDef[] = [
   { id: 2, name: '대형 도로', cost: 24, upkeep: 0.25, depth: 6, halfWidth: 0.43, node: 'road_large', desc: '왕복 6차로 · 구역은 양옆 6칸까지' },
 ];
 
-export type FacilityCategory = 'power' | 'water' | 'sewage' | 'health' | 'police' | 'fire' | 'park';
+export type FacilityCategory = 'power' | 'water' | 'sewage' | 'health' | 'police' | 'fire' | 'park' | 'edu1' | 'edu2' | 'edu3';
 
 /** 반경(커버리지)을 가지는 서비스 카테고리 */
-export type ServiceCategory = 'health' | 'police' | 'fire' | 'park';
-export const SERVICE_CATEGORIES: ServiceCategory[] = ['health', 'police', 'fire', 'park'];
+export type ServiceCategory = 'health' | 'police' | 'fire' | 'park' | 'edu1' | 'edu2' | 'edu3';
+export const SERVICE_CATEGORIES: ServiceCategory[] = ['health', 'police', 'fire', 'park', 'edu1', 'edu2', 'edu3'];
 export const isServiceCategory = (c: FacilityCategory): c is ServiceCategory => (SERVICE_CATEGORIES as string[]).includes(c);
 
 export const FAC = {
@@ -43,6 +43,9 @@ export const FAC = {
   FIRE: 11,
   PARK_S: 12,
   PARK_L: 13,
+  SCHOOL_E: 14,
+  SCHOOL_H: 15,
+  UNIV: 16,
 } as const;
 
 export interface FacilityDef {
@@ -61,6 +64,8 @@ export interface FacilityDef {
   needsWater: boolean;
   /** 서비스 반경(칸). 0이면 도로망 시설 */
   radius?: number;
+  /** 반경 안 주민 중 이 시설을 이용하는 비율 (의료: 환자, 교육: 학생). 수용량(capacity)과 비교한다 */
+  usage?: number;
   /** 해금에 필요한 개발 트리 노드 (null = 기본 제공) */
   node: string | null;
   desc: string;
@@ -104,12 +109,12 @@ export const FACILITIES: Record<number, FacilityDef> = {
   },
   [FAC.CLINIC]: {
     id: FAC.CLINIC, name: '진료소', icon: '🏥', category: 'health', w: 2, h: 2,
-    cost: 1200, upkeep: 3, capacity: 120, needsWater: false, radius: 14, node: 'fac_clinic',
+    cost: 1200, upkeep: 3, capacity: 120, usage: 0.08, needsWater: false, radius: 14, node: 'fac_clinic',
     desc: '반경 14칸 · 환자 120명 수용(주민 약 1,500명) · 건강·행복 ↑',
   },
   [FAC.HOSPITAL]: {
     id: FAC.HOSPITAL, name: '병원', icon: '⚕️', category: 'health', w: 3, h: 3,
-    cost: 6000, upkeep: 12, capacity: 3000, needsWater: false, radius: 24, node: 'fac_hospital',
+    cost: 6000, upkeep: 12, capacity: 3000, usage: 0.08, needsWater: false, radius: 24, node: 'fac_hospital',
     desc: '반경 24칸 · 환자 3,000명 수용(주민 약 37,500명) · 넓은 지역 의료',
   },
   [FAC.POLICE]: {
@@ -132,11 +137,24 @@ export const FACILITIES: Record<number, FacilityDef> = {
     cost: 1000, upkeep: 2, capacity: 0, needsWater: false, radius: 12, node: 'fac_park_l',
     desc: '반경 12칸 · 행복도 ↑↑',
   },
+  [FAC.SCHOOL_E]: {
+    id: FAC.SCHOOL_E, name: '초등학교', icon: '🏫', category: 'edu1', w: 2, h: 2,
+    cost: 1500, upkeep: 3, capacity: 150, usage: 0.12, needsWater: false, radius: 14, node: 'fac_school_e',
+    desc: '반경 14칸 · 학생 150명 · 교육 1단계 (주민 약 1,250명)',
+  },
+  [FAC.SCHOOL_H]: {
+    id: FAC.SCHOOL_H, name: '고등학교', icon: '🏛️', category: 'edu2', w: 3, h: 3,
+    cost: 3500, upkeep: 6, capacity: 250, usage: 0.1, needsWater: false, radius: 20, node: 'fac_school_h',
+    desc: '반경 20칸 · 학생 250명 · 교육 2단계 · 사무·고밀 상업 일자리',
+  },
+  [FAC.UNIV]: {
+    id: FAC.UNIV, name: '대학교', icon: '🎓', category: 'edu3', w: 4, h: 4,
+    cost: 12000, upkeep: 18, capacity: 300, usage: 0.06, needsWater: false, radius: 30, node: 'fac_univ',
+    desc: '반경 30칸 · 학생 300명 · 교육 3단계 · 고급 사무 일자리',
+  },
 };
 
 export const FACILITY_LIST: FacilityDef[] = Object.values(FACILITIES);
 
-/** 전력/상수/하수 사용량 (건물 레벨당) */
-export const POWER_USE = { R: 0.1, C: 0.2, I: 0.3 };
-export const WATER_USE = { R: 0.5, C: 0.5, I: 1.0 };
+/** 하수 발생량 = 수도 사용량 × 이 비율 (전력·수도 사용량은 data/zones.ts) */
 export const SEWAGE_RATIO = 0.8;

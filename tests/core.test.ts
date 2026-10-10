@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { GameState } from '../src/game/state';
 import { applyAction, previewAction, canPlaceFacility, ToolOptions } from '../src/game/actions';
-import { refreshStats, tick } from '../src/game/simulation';
+import { meetsRequirements, refreshStats, tick } from '../src/game/simulation';
 import { updateFires } from '../src/game/events';
 import { awardXp, buyNode, buySection, sectionCost } from '../src/game/progression';
 import { FAC } from '../src/data/catalog';
 import { K } from '../src/world/grid';
 import { deserializeGame, serializeGame } from '../src/utils/save';
 import { buildStarterCity, T } from '../scripts/scenario';
-import { HAPPINESS, LEGACY_OFFSET as O, SECTIONS_PER_SIDE } from '../src/utils/constants';
+import { ABANDON, HAPPINESS, LEGACY_OFFSET as O, SECTIONS_PER_SIDE } from '../src/utils/constants';
+import { ZONE_BY_KIND } from '../src/data/zones';
 import { sectionIndex } from '../src/world/grid';
 
 const opts = (o: Partial<ToolOptions> = {}): ToolOptions => ({ zone: 'R', facility: FAC.WIND, roadType: 0, ...o });
@@ -139,6 +140,10 @@ describe('전력·상수도·하수 네트워크', () => {
     for (let t = 0; t < 60; t++) tick(s);
     expect(s.stats.buildings).toBeLessThanOrEqual(before);
     expect(s.stats.wateredRatio).toBe(0);
+    // 단수가 오래 이어지면 폐허가 된다
+    for (let t = 0; t < 100; t++) tick(s);
+    expect(s.stats.abandoned).toBeGreaterThan(0);
+    expect(s.stats.pop).toBeLessThan(1);
   });
 
   it('용량이 모자라면 시설에서 먼 구역부터 끊긴다', () => {
@@ -295,6 +300,172 @@ describe('서비스 건물(P3)', () => {
     for (let t = 0; t < 3; t++) tick(withFire);
     expect(withFire.grid.level[b]).toBe(3);
     expect(withFire.fires.has(b)).toBe(false);
+  });
+});
+
+describe('교육·사무·땅값·폐허·다리 (P4·P5)', () => {
+  /** 전력·수도·하수·도로가 충분한 시험 도시 + 주민 있는 주택 + 상업 일자리 */
+  const richCity = (): GameState => {
+    const s = new GameState();
+    buildStarterCity(s);
+    s.unlocked.add('fac_coal');
+    s.unlocked.add('zone_office');
+    s.unlocked.add('zone_rh');
+    s.unlocked.add('zone_ch');
+    s.money = 500000;
+    applyAction(s, 'facility', opts({ facility: FAC.COAL }), T(28, 17), T(28, 17));
+    // 주택 10채(레벨 3) → 노동력, 상업 건물 5채(레벨 3) → 상업 일자리 80
+    for (let k = 0; k < 10; k++) {
+      const i = s.grid.idx(32 + (k % 5) + O, 27 + Math.floor(k / 5) + O);
+      s.grid.kind[i] = K.RES;
+      s.grid.level[i] = 3;
+    }
+    for (let k = 0; k < 5; k++) {
+      const i = s.grid.idx(17 + k + O, 27 + O);
+      s.grid.kind[i] = K.COM;
+      s.grid.level[i] = 3;
+    }
+    refreshStats(s);
+    return s;
+  };
+
+  it('사무 구역은 해금 전에는 지정할 수 없다', () => {
+    const s = new GameState();
+    applyAction(s, 'road', opts(), T(20, 30), T(30, 30));
+    const pv = previewAction(s, 'zone', opts({ zone: 'O' }), T(25, 32), T(25, 32));
+    expect(pv.tiles.length).toBe(0);
+    s.unlocked.add('zone_office');
+    expect(previewAction(s, 'zone', opts({ zone: 'O' }), T(25, 32), T(25, 32)).tiles[0].ok).toBe(true);
+  });
+
+  it('교육받은 시민이 없으면 사무 건물이 지어지지 않고, 있으면 지어진다', () => {
+    const none = richCity();
+    applyAction(none, 'zone', opts({ zone: 'O' }), T(18, 24), T(24, 25));
+    none.edu = { a1: 0, a2: 0, a3: 0 };
+    for (let t = 0; t < 40; t++) tick(none);
+    const officeCount = (g: GameState): number => {
+      let n = 0;
+      for (let i = 0; i < g.grid.count; i++) if (g.grid.kind[i] === K.OFF && g.grid.level[i] > 0) n++;
+      return n;
+    };
+    expect(officeCount(none)).toBe(0);
+
+    const educated = richCity();
+    applyAction(educated, 'zone', opts({ zone: 'O' }), T(18, 24), T(24, 25));
+    educated.edu = { a1: 1, a2: 0.8, a3: 0.5 };
+    for (let t = 0; t < 40; t++) tick(educated);
+    expect(officeCount(educated)).toBeGreaterThan(0);
+  });
+
+  it('학력이 낮으면 고급 일자리를 채우지 못한다 (일자리 매칭)', () => {
+    const s = richCity();
+    const i = s.grid.idx(20 + O, 24 + O);
+    s.grid.kind[i] = K.OFF;
+    s.grid.level[i] = 3; // 사무 3레벨: 고학력 일자리 55개
+    s.edu = { a1: 0, a2: 0, a3: 0 };
+    refreshStats(s);
+    const lowEdu = s.stats.jobs;
+    expect(s.stats.jobsTotal).toBeGreaterThan(lowEdu);
+    s.edu = { a1: 1, a2: 1, a3: 1 };
+    refreshStats(s);
+    expect(s.stats.jobs).toBeGreaterThan(lowEdu);
+  });
+
+  it('학교 커버리지가 시민 이수율을 서서히 올린다', () => {
+    const s = richCity();
+    s.unlocked.add('fac_school_e');
+    s.unlocked.add('fac_school_h');
+    applyAction(s, 'facility', opts({ facility: FAC.SCHOOL_E }), T(34, 24), T(34, 24));
+    applyAction(s, 'facility', opts({ facility: FAC.SCHOOL_H }), T(36, 23), T(36, 23));
+    for (let t = 0; t < 200; t++) tick(s);
+    expect(s.edu.a1).toBeGreaterThan(0.3);
+    expect(s.edu.a2).toBeGreaterThan(0.1);
+    expect(s.edu.a3).toBe(0); // 대학교가 없다
+    expect(s.edu.a2).toBeLessThanOrEqual(s.edu.a1 + 1e-9);
+  });
+
+  it('땅값은 공원·서비스 근처에서 올라가고 공업 오염 근처에서 내려간다', () => {
+    const s = richCity();
+    const near = s.grid.idx(36 + O, 31 + O);
+    const base = s.grid.landValue[near];
+    s.unlocked.add('fac_park_l');
+    applyAction(s, 'facility', opts({ facility: FAC.PARK_L }), T(36, 31), T(36, 31));
+    refreshStats(s);
+    expect(s.grid.landValue[near]).toBeGreaterThan(base + 10);
+    // 공업 건물 옆
+    const ind = s.grid.idx(40 + O, 33 + O);
+    s.grid.kind[ind] = K.IND;
+    s.grid.level[ind] = 3;
+    refreshStats(s);
+    const polluted = s.grid.landValue[s.grid.idx(41 + O, 33 + O)];
+    const clean = s.grid.landValue[s.grid.idx(41 + O, 36 + O)];
+    expect(polluted).toBeLessThan(clean);
+  });
+
+  it('땅값이 모자라면 건물 레벨이 오르지 않는다', () => {
+    const s = richCity();
+    const i = s.grid.idx(32 + O, 27 + O);
+    s.grid.level[i] = 1;
+    s.grid.progress[i] = 0;
+    s.grid.landValue[i] = 0;
+    // 땅값이 낮은 상태에서는 meetsRequirements 가 거짓
+    const def = ZONE_BY_KIND[K.RES];
+    expect(meetsRequirements(s, def, 2, 10)).toBe(false);
+    expect(meetsRequirements(s, def, 2, def.minLandValue[2])).toBe(true);
+    // 고밀 주거는 땅값 45 이상이어야 한다
+    expect(meetsRequirements(s, ZONE_BY_KIND[K.RESH], 1, 40)).toBe(false);
+    expect(meetsRequirements(s, ZONE_BY_KIND[K.RESH], 1, 50)).toBe(true);
+  });
+
+  it('서비스가 오래 끊긴 건물은 폐허가 되고, 복구하면 되살아난다', () => {
+    const s = richCity();
+    const i = s.grid.idx(32 + O, 27 + O);
+    expect(s.grid.level[i]).toBe(3);
+    // 취수장 철거 → 단수
+    applyAction(s, 'demolish', opts(), T(26, 21), T(26, 21));
+    for (let t = 0; t < ABANDON.ticks + 5; t++) tick(s);
+    expect(s.grid.abandoned[i]).toBe(1);
+    expect(s.stats.abandoned).toBeGreaterThan(0);
+    const popBefore = s.stats.pop;
+    // 복구
+    applyAction(s, 'facility', opts({ facility: FAC.PUMP }), T(26, 21), T(26, 21));
+    for (let t = 0; t < ABANDON.ticks; t++) tick(s);
+    expect(s.grid.abandoned[i]).toBe(0);
+    expect(s.stats.pop).toBeGreaterThan(popBefore);
+  });
+
+  it('물 위에 다리를 놓을 수 있고 비용은 ×2.65, 환급도 비례한다', () => {
+    const s = new GameState();
+    s.money = 100000;
+    const a = T(16, 21);
+    const b = T(28, 21); // 호수를 가로지른다
+    const g = s.grid;
+    let water = 0;
+    let land = 0;
+    for (let x = a.x; x <= b.x; x++) (g.isWater(x, a.y) ? water++ : land++);
+    expect(water).toBeGreaterThan(3);
+    const before = s.money;
+    const r = applyAction(s, 'road', opts(), a, b);
+    expect(r.ok).toBe(true);
+    expect(before - s.money).toBe(land * 12 + water * Math.round(12 * 2.65));
+    expect(s.stats.roads).toBe(land + water);
+    // 철거 환급
+    const m1 = s.money;
+    applyAction(s, 'demolish', opts(), a, b);
+    expect(s.money - m1).toBe(land * 6 + water * Math.round(12 * 0.5 * 2.65));
+  });
+
+  it('다리 위 도로도 전력·수도망으로 이어진다 (호수 건너편 구역이 공급받는다)', () => {
+    const s = new GameState();
+    s.money = 100000;
+    // 호수 서쪽에서 동쪽 취수장까지 다리
+    applyAction(s, 'road', opts(), T(16, 21), T(27, 21)); // 호수(19~25) 가로질러 취수장 옆(27,21)
+    applyAction(s, 'facility', opts({ facility: FAC.PUMP }), T(26, 22), T(26, 22)); // 호수 옆, 도로(27,22)? 아님 → 다음 줄에서 연결
+    applyAction(s, 'road', opts(), T(27, 21), T(27, 23));
+    applyAction(s, 'facility', opts({ facility: FAC.PUMP }), T(26, 20), T(26, 20));
+    refreshStats(s);
+    // 서쪽 끝 도로 타일(16,21)까지 수도망이 닿는다
+    expect(s.grid.watered[s.grid.idx(16 + O, 21 + O)]).toBe(1);
   });
 });
 

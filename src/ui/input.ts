@@ -2,6 +2,8 @@ import { GameState } from '../game/state';
 import { Tool, applyAction, previewAction } from '../game/actions';
 import { Tile, sectionIndex } from '../world/grid';
 import { FACILITIES } from '../data/catalog';
+import { ZONES } from '../data/zones';
+import { isUnlocked } from '../game/progression';
 import { isSectionAdjacent, sectionCost } from '../game/progression';
 import { GameView } from '../render/scene';
 import { ToolController } from './toolbar';
@@ -308,15 +310,13 @@ export class InputController {
           this.cancelBuild();
           this.tools.setTool('select');
           break;
-        case 'KeyR':
-          if (this.tools.tool === 'zone') this.tools.setZone('R');
-          break;
-        case 'KeyC':
-          if (this.tools.tool === 'zone') this.tools.setZone('C');
-          break;
-        case 'KeyI':
-          if (this.tools.tool === 'zone') this.tools.setZone('I');
-          break;
+        default: {
+          // 구역 도구 사용 중에는 글자 키로 구역 종류 선택
+          if (this.tools.tool === 'zone') {
+            const zd = ZONES.find((z) => `Key${z.key}` === e.code);
+            if (zd && isUnlocked(this.state, zd.node)) this.tools.setZone(zd.id);
+          }
+        }
       }
       this.refreshPreview(this.lastX, this.lastY);
     } else {

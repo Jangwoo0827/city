@@ -22,11 +22,23 @@ const SPEEDS: { speed: number; label: string; title: string }[] = [
   { speed: 3, label: '▶▶▶', title: '속도 ×3' },
 ];
 
-const COVERAGE_DEFS: { mode: ServiceMode; icon: string; name: string; key: 'covHealth' | 'covPolice' | 'covFire' | 'covPark' }[] = [
-  { mode: 'health', icon: '🏥', name: '의료', key: 'covHealth' },
-  { mode: 'police', icon: '👮', name: '치안', key: 'covPolice' },
-  { mode: 'fire', icon: '🚒', name: '소방', key: 'covFire' },
-  { mode: 'park', icon: '🌳', name: '공원', key: 'covPark' },
+interface CoverageDef {
+  mode: ServiceMode;
+  /** 클릭 시 순환할 모드들 (없으면 mode 한 개를 켜고 끔) */
+  cycle?: ServiceMode[];
+  icon: string;
+  name: string;
+  value: (s: GameState) => number;
+}
+
+const COVERAGE_DEFS: CoverageDef[] = [
+  { mode: 'health', icon: '🏥', name: '의료', value: (s) => s.stats.covHealth },
+  { mode: 'police', icon: '👮', name: '치안', value: (s) => s.stats.covPolice },
+  { mode: 'fire', icon: '🚒', name: '소방', value: (s) => s.stats.covFire },
+  { mode: 'park', icon: '🌳', name: '공원', value: (s) => s.stats.covPark },
+  // 🎓: 고등학교 이수율 표시. 클릭할 때마다 초등 → 고등 → 대학 커버리지 오버레이로 순환
+  { mode: 'edu2', cycle: ['edu1', 'edu2', 'edu3'], icon: '🎓', name: '교육 (이수율)', value: (s) => s.edu.a2 },
+  { mode: 'land', icon: '💰', name: '땅값', value: (s) => s.stats.landValue / 100 },
 ];
 
 const faceFor = (h: number): string => (h >= 75 ? '😄' : h >= 50 ? '🙂' : h >= 30 ? '😐' : '😠');
@@ -70,7 +82,7 @@ export class Hud {
   private overlayMode: ServiceMode = 'none';
   private readonly covBtns = new Map<ServiceMode, HTMLButtonElement>();
   private readonly speedBtns = new Map<number, HTMLButtonElement>();
-  private readonly rci: Record<'R' | 'C' | 'I', HTMLElement>;
+  private readonly rci: Record<'R' | 'C' | 'I' | 'O', HTMLElement>;
   private readonly toasts: HTMLElement;
   private readonly menu: HTMLElement;
   private readonly overlay: HTMLElement;
@@ -150,10 +162,10 @@ export class Hud {
     rciBox.id = 'rci';
     rciBox.className = 'panel';
     rciBox.title = '수요: 위로 차오를수록 해당 구역이 더 필요합니다';
-    rciBox.innerHTML = (['R', 'C', 'I'] as const)
+    rciBox.innerHTML = (['R', 'C', 'I', 'O'] as const)
       .map(
         (z) => `<div class="col ${z}"><div class="track"><i></i><span class="mid"></span></div><b>${
-          z === 'R' ? '주거' : z === 'C' ? '상업' : '공업'
+          z === 'R' ? '주거' : z === 'C' ? '상업' : z === 'I' ? '공업' : '사무'
         }</b></div>`,
       )
       .join('');
@@ -161,6 +173,7 @@ export class Hud {
       R: rciBox.querySelector('.R i') as HTMLElement,
       C: rciBox.querySelector('.C i') as HTMLElement,
       I: rciBox.querySelector('.I i') as HTMLElement,
+      O: rciBox.querySelector('.O i') as HTMLElement,
     };
 
     // 공급 현황 + 오버레이 토글
@@ -192,9 +205,13 @@ export class Hud {
     for (const d of COVERAGE_DEFS) {
       const b = document.createElement('button');
       b.className = 'util-cov';
-      b.title = `${d.name} 커버리지 오버레이 (초록 = 충분, 빨강 = 부족)`;
+      b.title = `${d.name} 오버레이 (초록 = 충분/높음, 빨강 = 부족/낮음)`;
       b.addEventListener('click', () => {
-        this.overlayMode = this.overlayMode === d.mode ? 'none' : d.mode;
+        if (d.cycle) {
+          // 순환: 꺼짐 → 첫 번째 → … → 마지막 → 꺼짐
+          const idx = d.cycle.indexOf(this.overlayMode);
+          this.overlayMode = idx < 0 ? d.cycle[0] : (d.cycle[idx + 1] ?? 'none');
+        } else this.overlayMode = this.overlayMode === d.mode ? 'none' : d.mode;
         hooks.onOverlay(this.overlayMode);
         this.update();
       });
@@ -280,17 +297,20 @@ export class Hud {
 
     for (const d of COVERAGE_DEFS) {
       const btn = this.covBtns.get(d.mode)!;
-      const v = st[d.key];
-      btn.innerHTML = `<span>${d.icon}</span><b class="${v < 0.5 && st.pop > 0 ? 'neg' : ''}">${Math.round(v * 100)}%</b>`;
-      btn.classList.toggle('active', this.overlayMode === d.mode);
+      const v = d.value(s);
+      const active = d.cycle ? d.cycle.includes(this.overlayMode) : this.overlayMode === d.mode;
+      const sub = d.cycle && active ? ({ edu1: '초', edu2: '고', edu3: '대' } as Record<string, string>)[this.overlayMode] : '';
+      btn.innerHTML = `<span>${d.icon}${sub}</span><b class="${v < 0.5 && st.pop > 0 && d.mode !== 'land' ? 'neg' : ''}">${Math.round(v * 100)}%</b>`;
+      btn.classList.toggle('active', active);
     }
 
     this.setBar('R', st.demandR);
     this.setBar('C', st.demandC);
     this.setBar('I', st.demandI);
+    this.setBar('O', st.demandO);
   }
 
-  private setBar(z: 'R' | 'C' | 'I', v: number): void {
+  private setBar(z: 'R' | 'C' | 'I' | 'O', v: number): void {
     const el = this.rci[z];
     const pct = Math.min(1, Math.abs(v)) * 50;
     el.style.height = `${pct}%`;

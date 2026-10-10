@@ -8,11 +8,18 @@ export const K = {
   COM: 3, // 상업 구역
   IND: 4, // 공업 구역
   FAC: 5, // 시설 (발전소·상하수도 등, 크기는 시설 정의에 따름)
+  OFF: 6, // 사무 구역
+  RESH: 7, // 고밀 주거 구역
+  COMH: 8, // 고밀 상업 구역
 } as const;
 export type Kind = (typeof K)[keyof typeof K];
-export type ZoneKind = typeof K.RES | typeof K.COM | typeof K.IND;
+export type ZoneKind = typeof K.RES | typeof K.COM | typeof K.IND | typeof K.OFF | typeof K.RESH | typeof K.COMH;
 
-export const isZoneKind = (k: number): k is ZoneKind => k === K.RES || k === K.COM || k === K.IND;
+/** 구역(건물이 자라는 타일) 종류인가 */
+export const isZoneKind = (k: number): k is ZoneKind => k === K.RES || k === K.COM || k === K.IND || k >= K.OFF;
+
+/** 주민이 사는 구역 (저밀·고밀 주거) */
+export const isResidentialKind = (k: number): boolean => k === K.RES || k === K.RESH;
 
 /** 지형 */
 export const T = { LAND: 0, WATER: 1 } as const;
@@ -52,6 +59,14 @@ export class Grid {
   roadType = new Uint8Array(this.count);
   /** 지형 (T.LAND / T.WATER) — 맵 생성 시 채워지고 저장하지 않음 */
   terrain = new Uint8Array(this.count);
+  /** 물 타일 근처(수변)인가 — 맵 생성 시 계산, 저장하지 않음 */
+  waterNear = new Uint8Array(this.count);
+  /** 폐허가 된 건물 (1 = 폐허) */
+  abandoned = new Uint8Array(this.count);
+  /** 서비스 끊김이 이어진 틱 수 (폐허 판정용, 저장하지 않음) */
+  neglect = new Uint8Array(this.count);
+  /** 땅값 0..100 (매 틱 계산, 저장하지 않음) */
+  landValue = new Float32Array(this.count);
 
   // ── 매 틱/변경 시 계산되는 값 (저장하지 않음) ──
   /** 전력·상수·하수가 공급되는 타일 (도로/구역/시설) */
@@ -90,5 +105,8 @@ export class Grid {
     this.watered.fill(0);
     this.sewered.fill(0);
     this.access.fill(-1);
+    this.abandoned.fill(0);
+    this.neglect.fill(0);
+    this.landValue.fill(0);
   }
 }

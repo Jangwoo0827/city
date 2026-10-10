@@ -1,5 +1,5 @@
-import { JOBS_PER_LEVEL, POP_PER_LEVEL, TAX_PER_LEVEL } from '../utils/constants';
 import { FACILITIES, FacilityDef } from '../data/catalog';
+import { JobClass, ZONES, ZONE_BY_KIND } from '../data/zones';
 import { Grid, K, Tile } from './grid';
 
 /** 시설 풋프린트 (앵커 = 좌상단) */
@@ -40,30 +40,21 @@ export function facilityList(g: Grid): FacilityAt[] {
 
 /** 건물 한 채의 인구 / 일자리 / 기본 세금 */
 export function buildingStats(kind: number, level: number): { pop: number; jobs: number; tax: number } {
-  if (level <= 0) return { pop: 0, jobs: 0, tax: 0 };
-  switch (kind) {
-    case K.RES:
-      return { pop: POP_PER_LEVEL[level], jobs: 0, tax: TAX_PER_LEVEL.R * level };
-    case K.COM:
-      return { pop: 0, jobs: JOBS_PER_LEVEL.C[level], tax: TAX_PER_LEVEL.C * level };
-    case K.IND:
-      return { pop: 0, jobs: JOBS_PER_LEVEL.I[level], tax: TAX_PER_LEVEL.I * level };
-    default:
-      return { pop: 0, jobs: 0, tax: 0 };
-  }
+  const def = ZONE_BY_KIND[kind];
+  if (level <= 0 || !def) return { pop: 0, jobs: 0, tax: 0 };
+  return { pop: def.pop[level], jobs: def.jobs[level], tax: def.tax * level };
+}
+
+/** 건물 일자리가 요구하는 학력 등급 (일자리가 없으면 null) */
+export function jobClassOf(kind: number, level: number): JobClass | null {
+  return ZONE_BY_KIND[kind]?.jobClass[level] ?? null;
 }
 
 export const KIND_NAME: Record<number, string> = {
   [K.EMPTY]: '빈 땅',
   [K.ROAD]: '도로',
-  [K.RES]: '주거 구역',
-  [K.COM]: '상업 구역',
-  [K.IND]: '공업 구역',
   [K.FAC]: '시설',
+  ...Object.fromEntries(ZONES.map((z) => [z.kind, `${z.name} 구역`])),
 };
 
-export const BUILDING_NAME: Record<number, string> = {
-  [K.RES]: '주택',
-  [K.COM]: '상점',
-  [K.IND]: '공장',
-};
+export const BUILDING_NAME: Record<number, string> = Object.fromEntries(ZONES.map((z) => [z.kind, z.building]));

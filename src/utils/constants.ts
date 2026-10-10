@@ -60,6 +60,7 @@ export const DEMAND = {
   weightI: 0.9,
   weightC: 1.1,
   weightCJobs: 0.2,
+  weightO: 1.1,
   happyInfluence: 150, // (행복도-50)/이 값 이 주거 수요에 더해짐
 };
 
@@ -79,6 +80,8 @@ export const HAPPINESS = {
   noPowerPenalty: 25,
   noWaterPenalty: 20,
   noSewagePenalty: 10,
+  /** 폐허 비율 1.0 당 행복도 감소 */
+  abandonedPenalty: 25,
   /** 서비스 커버리지(0~1)가 높을 때의 행복도 보너스 / 범죄 페널티 */
   healthBonus: 10,
   parkBonus: 8,
@@ -192,4 +195,49 @@ export const WATER_POLLUTION = {
   intakePenalty: 0.4,
   /** 오염도 1.0일 때 행복도 감소 */
   happyPenalty: 12,
+};
+
+// ── 땅값 (0..100) ──────────────────────────────────────
+export const LAND_VALUE = {
+  base: 34,
+  /** 도로 가까이(최대 보너스, 거리 1칸마다 2씩 감소) */
+  road: 10,
+  /** 서비스 커버리지(0~1) 1.0 당 보너스 */
+  park: 25,
+  health: 10,
+  police: 10,
+  fire: 6,
+  edu1: 6,
+  edu2: 4,
+  /** 물가(3칸 이내) */
+  waterfront: 8,
+  /** 공업 오염 1.0 당 감소 */
+  pollution: 40,
+  /** 세수 배율: lerp(min, max, 땅값/100) */
+  taxMult: { min: 0.8, max: 1.2 },
+};
+
+// ── 교육 ──────────────────────────────────────────────
+export const EDU = {
+  /** 이수율이 목표(커버리지)를 향해 틱마다 움직이는 비율 */
+  smoothing: 0.015,
+  /** 시민 학력이 높을 때 행복도 보너스(고등학교 이수율 기준) */
+  happyBonus: 6,
+};
+
+// ── 폐허 ──────────────────────────────────────────────
+export const ABANDON = {
+  /** 도로 접근·전력·수도·하수 중 하나가 이 틱 동안 끊기면 폐허 */
+  ticks: 120,
+  /** 조건이 회복되면 틱마다 이만큼씩 줄어들고, 0이 되면 폐허가 풀린다 */
+  recoverPerTick: 3,
+  /** 폐허 알림 간격(틱) */
+  toastCooldown: 30,
+  /** 폐허가 된 건물의 세수/주민/일자리는 0 */
+};
+
+// ── 다리 (물 위 도로) ─────────────────────────────────
+export const BRIDGE = {
+  costMult: 2.65,
+  upkeepMult: 2,
 };

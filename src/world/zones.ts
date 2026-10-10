@@ -1,16 +1,14 @@
-import { K, Tile, ZoneKind } from './grid';
+import { ZONES, ZONE_BY_KIND, ZoneId } from '../data/zones';
+import { Tile, ZoneKind } from './grid';
 
-export type ZoneType = 'R' | 'C' | 'I';
+export type ZoneType = ZoneId;
 
-export const ZONE_KIND: Record<ZoneType, ZoneKind> = { R: K.RES, C: K.COM, I: K.IND };
+export const ZONE_KIND: Record<ZoneType, ZoneKind> = Object.fromEntries(ZONES.map((z) => [z.id, z.kind])) as Record<ZoneType, ZoneKind>;
 
-export const ZONE_NAME: Record<ZoneType, string> = { R: '주거', C: '상업', I: '공업' };
+export const ZONE_NAME: Record<ZoneType, string> = Object.fromEntries(ZONES.map((z) => [z.id, z.name])) as Record<ZoneType, string>;
 
 export function zoneTypeOfKind(kind: number): ZoneType | null {
-  if (kind === K.RES) return 'R';
-  if (kind === K.COM) return 'C';
-  if (kind === K.IND) return 'I';
-  return null;
+  return ZONE_BY_KIND[kind]?.id ?? null;
 }
 
 /** 두 모서리로 정의되는 사각형 영역의 모든 타일 */

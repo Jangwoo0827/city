@@ -1,5 +1,5 @@
 import { Grid } from '../world/grid';
-import type { ServiceCategory } from '../data/catalog';
+import { SERVICE_CATEGORIES, ServiceCategory } from '../data/catalog';
 import { generateTerrain } from '../world/terrain';
 import { SECTION_SIZE, START_MONEY, START_SECTIONS, SECTIONS_PER_SIDE } from '../utils/constants';
 import { START_DEV_POINTS, START_LOAN_LIMIT } from '../data/milestones';
@@ -35,6 +35,16 @@ export interface Stats {
   covPolice: number;
   covFire: number;
   covPark: number;
+  covEdu1: number;
+  covEdu2: number;
+  covEdu3: number;
+  demandO: number;
+  /** 총 일자리 / 이 도시 노동력이 채울 수 있는 일자리 / 실제로 채워진 일자리 */
+  jobsTotal: number;
+  jobsFilled: number;
+  /** 평균 땅값, 폐허 건물 수 */
+  landValue: number;
+  abandoned: number;
   /** 지출 내역 */
   upkeepRoads: number;
   upkeepFacilities: number;
@@ -78,6 +88,14 @@ export const emptyStats = (): Stats => ({
   covPolice: 0,
   covFire: 0,
   covPark: 0,
+  covEdu1: 0,
+  covEdu2: 0,
+  covEdu3: 0,
+  demandO: 0,
+  jobsTotal: 0,
+  jobsFilled: 0,
+  landValue: 0,
+  abandoned: 0,
   upkeepRoads: 0,
   upkeepFacilities: 0,
   interest: 0,
@@ -118,18 +136,19 @@ export class GameState {
   sections = new Uint8Array(SECTIONS_PER_SIDE * SECTIONS_PER_SIDE);
 
   // ── 서비스 (저장하지 않는 계산 결과) ──
-  cov: CoverageMaps = {
-    health: new Float32Array(this.grid.count),
-    police: new Float32Array(this.grid.count),
-    fire: new Float32Array(this.grid.count),
-    park: new Float32Array(this.grid.count),
-  };
+  cov: CoverageMaps = Object.fromEntries(SERVICE_CATEGORIES.map((c) => [c, new Float32Array(this.grid.count)])) as CoverageMaps;
   /** 서비스 시설(앵커 인덱스)별 이용 인구 / 효율 */
   serviceLoad = new Map<number, { pop: number; patients: number; eff: number }>();
   /** 불타는 건물: 타일 인덱스 → 남은 연소 틱 */
   fires = new Map<number, number>();
   /** 마지막으로 불이 난 틱 (화재 간격 제한용) */
   lastFireTick = -1e9;
+
+  // ── 시민 교육 이수율 (0..1, 서서히 변함) ──
+  /** a1: 초등 이상, a2: 고등학교 이상, a3: 대학교 이상 (a3 ≤ a2 ≤ a1) */
+  edu = { a1: 0, a2: 0, a3: 0 };
+  /** 마지막 폐허 알림 틱 */
+  lastAbandonToast = -1e9;
 
   // ── 상하수도 환경 ──
   /** 지하수 저장량 0..1 */
@@ -206,6 +225,8 @@ export class GameState {
     this.waterPollution = 0;
     this.fires.clear();
     this.lastFireTick = -1e9;
+    this.edu = { a1: 0, a2: 0, a3: 0 };
+    this.lastAbandonToast = -1e9;
     this.resetSections();
     this.markAllDirty();
     this.emit('reset');

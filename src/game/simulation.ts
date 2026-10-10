@@ -1,5 +1,8 @@
 import {
+  ABANDON,
   BANKRUPT_LIMIT,
+  BRIDGE,
+  EDU,
   GROWTH,
   HAPPINESS,
   MAX_LEVEL,
@@ -9,13 +12,15 @@ import {
   XP_AWARD,
 } from '../utils/constants';
 import { ROAD_TYPES } from '../data/catalog';
+import { ZONE_BY_KIND, ZoneDef } from '../data/zones';
 import { clamp, lerp } from '../utils/math';
-import { K, isZoneKind } from '../world/grid';
+import { K, T, isResidentialKind, isZoneKind } from '../world/grid';
 import { computeAccess } from '../world/roads';
-import { buildingStats, facilityList } from '../world/buildings';
+import { buildingStats, facilityList, jobClassOf } from '../world/buildings';
 import { GameState } from './state';
 import { computeNetworks, updateEnvironment } from './network';
 import { computeCoverage } from './coverage';
+import { computeLandValue } from './landvalue';
 import { updateFires } from './events';
 import { computeDemand } from './demand';
 import { computeEconomy } from './economy';
@@ -28,7 +33,7 @@ function computePollution(s: GameState): void {
   p.fill(0);
   const R = HAPPINESS.pollutionRadius;
   for (let i = 0; i < g.count; i++) {
-    if (g.kind[i] !== K.IND || g.level[i] === 0) continue;
+    if (g.kind[i] !== K.IND || g.level[i] === 0 || g.abandoned[i]) continue;
     const x = i % g.size;
     const y = (i / g.size) | 0;
     const strength = 0.25 + 0.15 * g.level[i];
@@ -56,11 +61,16 @@ export function refreshStats(s: GameState): void {
   computeNetworks(s);
   computeCoverage(s);
   computePollution(s);
+  computeLandValue(s);
 
   let pop = 0;
   let jobsC = 0;
   let jobsI = 0;
+  let jobsLow = 0;
+  let jobsSkilled = 0;
+  let jobsHigh = 0;
   let buildings = 0;
+  let abandoned = 0;
   let poweredB = 0;
   let wateredB = 0;
   let sewagedB = 0;
@@ -68,11 +78,15 @@ export function refreshStats(s: GameState): void {
   let upkeepRoads = 0;
   let resLevels = 0;
   let pollutedLevels = 0;
-  // 서비스 커버리지 가중 평균용 (의료·경찰·소방은 주민 수, 공원은 건물 레벨)
+  let landSum = 0;
+  // 서비스 커버리지 가중 평균용 (의료·경찰·소방·교육은 주민 수, 공원은 건물 레벨)
   let popW = 0;
   let covH = 0;
   let covP = 0;
   let covF = 0;
+  let covE1 = 0;
+  let covE2 = 0;
+  let covE3 = 0;
   let parkW = 0;
   let covPk = 0;
 
@@ -80,23 +94,38 @@ export function refreshStats(s: GameState): void {
     const k = g.kind[i];
     if (k === K.ROAD) {
       roads++;
-      upkeepRoads += ROAD_TYPES[g.roadType[i]]?.upkeep ?? 0.2;
+      const mult = g.terrain[i] === T.WATER ? BRIDGE.upkeepMult : 1;
+      upkeepRoads += (ROAD_TYPES[g.roadType[i]]?.upkeep ?? 0.2) * mult;
     } else if (isZoneKind(k) && g.level[i] > 0) {
+      if (g.abandoned[i]) {
+        abandoned++;
+        continue;
+      }
       buildings++;
       if (g.powered[i]) poweredB++;
       if (g.watered[i]) wateredB++;
       if (g.sewered[i]) sewagedB++;
+      landSum += g.landValue[i];
       const b = buildingStats(k, g.level[i]);
       pop += b.pop;
-      if (k === K.COM) jobsC += b.jobs;
-      else if (k === K.IND) jobsI += b.jobs;
+      if (b.jobs > 0) {
+        if (k === K.COM || k === K.COMH) jobsC += b.jobs;
+        else if (k === K.IND) jobsI += b.jobs;
+        const jc = jobClassOf(k, g.level[i]);
+        if (jc === 'skilled') jobsSkilled += b.jobs;
+        else if (jc === 'high') jobsHigh += b.jobs;
+        else jobsLow += b.jobs;
+      }
       parkW += g.level[i];
       covPk += g.level[i] * s.cov.park[i];
-      if (k === K.RES) {
+      if (isResidentialKind(k)) {
         popW += b.pop;
         covH += b.pop * s.cov.health[i];
         covP += b.pop * s.cov.police[i];
         covF += b.pop * s.cov.fire[i];
+        covE1 += b.pop * s.cov.edu1[i];
+        covE2 += b.pop * s.cov.edu2[i];
+        covE3 += b.pop * s.cov.edu3[i];
         resLevels += g.level[i];
         pollutedLevels += g.level[i] * Math.min(1, s.pollution[i]);
       }
@@ -107,12 +136,26 @@ export function refreshStats(s: GameState): void {
   let upkeepFac = 0;
   for (const f of facs) upkeepFac += f.def.upkeep;
 
+  // 노동력과 학력별 일자리 매칭
+  const workers = Math.round(pop * WORKER_RATIO);
+  const skilledW = workers * s.edu.a2; // 고등학교 이상
+  const highW = workers * s.edu.a3; // 대학교
+  const filledHigh = Math.min(jobsHigh, highW);
+  const filledSkilled = Math.min(jobsSkilled, Math.max(0, skilledW - filledHigh));
+  const filledLow = Math.min(jobsLow, Math.max(0, workers - filledHigh - filledSkilled));
+  const jobsFilled = filledHigh + filledSkilled + filledLow;
+  const jobsAvail = jobsLow + Math.min(jobsSkilled + jobsHigh, skilledW);
+
   st.pop = pop;
-  st.workers = Math.round(pop * WORKER_RATIO);
+  st.workers = workers;
   st.jobsC = jobsC;
   st.jobsI = jobsI;
-  st.jobs = jobsC + jobsI;
+  st.jobsTotal = jobsLow + jobsSkilled + jobsHigh;
+  st.jobsFilled = jobsFilled;
+  st.jobs = jobsAvail;
   st.buildings = buildings;
+  st.abandoned = abandoned;
+  st.landValue = buildings > 0 ? landSum / buildings : 0;
   st.roads = roads;
   st.facilities = facs.length;
   st.upkeepRoads = upkeepRoads;
@@ -120,6 +163,9 @@ export function refreshStats(s: GameState): void {
   st.covHealth = popW > 0 ? covH / popW : 0;
   st.covPolice = popW > 0 ? covP / popW : 0;
   st.covFire = popW > 0 ? covF / popW : 0;
+  st.covEdu1 = popW > 0 ? covE1 / popW : 0;
+  st.covEdu2 = popW > 0 ? covE2 / popW : 0;
+  st.covEdu3 = popW > 0 ? covE3 / popW : 0;
   st.covPark = parkW > 0 ? covPk / parkW : 0;
   st.poweredRatio = buildings > 0 ? poweredB / buildings : 1;
   st.wateredRatio = buildings > 0 ? wateredB / buildings : 1;
@@ -127,14 +173,17 @@ export function refreshStats(s: GameState): void {
 
   // 행복도 목표치
   const polluted = resLevels > 0 ? pollutedLevels / resLevels : 0;
-  const unemployment = st.workers > 0 ? Math.max(0, st.workers - st.jobs) / st.workers : 0;
-  const surplus = st.jobs > st.workers ? Math.min(1, (st.jobs - st.workers) / Math.max(1, st.jobs)) : 0;
+  const unemployment = workers > 0 ? Math.max(0, workers - jobsFilled) / workers : 0;
+  const surplus = jobsAvail > workers ? Math.min(1, (jobsAvail - workers) / Math.max(1, jobsAvail)) : 0;
   const crimeScale = clamp((pop - HAPPINESS.crimeStartPop) / HAPPINESS.crimeRamp, 0, 1);
+  const abandonedShare = buildings + abandoned > 0 ? abandoned / (buildings + abandoned) : 0;
   s.happinessTarget = clamp(
     HAPPINESS.base +
       HAPPINESS.healthBonus * st.covHealth +
-      HAPPINESS.parkBonus * st.covPark -
+      HAPPINESS.parkBonus * st.covPark +
+      EDU.happyBonus * s.edu.a2 -
       HAPPINESS.crimePenalty * crimeScale * (1 - st.covPolice) -
+      HAPPINESS.abandonedPenalty * abandonedShare -
       HAPPINESS.noPowerPenalty * (1 - st.poweredRatio) -
       HAPPINESS.noWaterPenalty * (1 - st.wateredRatio) -
       HAPPINESS.noSewagePenalty * (1 - st.sewagedRatio) -
@@ -146,18 +195,43 @@ export function refreshStats(s: GameState): void {
     100,
   );
 
-  computeDemand(s);
+  computeDemand(s, skilledW, jobsSkilled + jobsHigh);
   const eco = computeEconomy(s);
   st.income = eco.income;
   st.expense = eco.expense;
+}
+
+/** 시민의 교육 이수율이 학교 커버리지를 향해 서서히 변한다 (a3 ≤ a2 ≤ a1) */
+function updateEducation(s: GameState): void {
+  const st = s.stats;
+  const e = s.edu;
+  const k = EDU.smoothing;
+  e.a1 += (st.covEdu1 - e.a1) * k;
+  e.a2 += (Math.min(st.covEdu2, e.a1) - e.a2) * k;
+  e.a3 += (Math.min(st.covEdu3, e.a2) - e.a3) * k;
+}
+
+/** 이 구역 정의의 건물이 해당 레벨이 될 수 있는 학력·땅값 조건을 만족하는가 */
+export function meetsRequirements(s: GameState, def: ZoneDef, level: number, landValue: number): boolean {
+  if (landValue < def.minLandValue[level]) return false;
+  const e = def.minEdu[level];
+  if (e && (e.level === 2 ? s.edu.a2 : s.edu.a3) < e.share) return false;
+  return true;
 }
 
 /** 구역 타일마다 건물 생성/성장. 얻은 XP 를 돌려준다. */
 function grow(s: GameState): number {
   const g = s.grid;
   const st = s.stats;
-  const spawned = { [K.RES]: 0, [K.COM]: 0, [K.IND]: 0 } as Record<number, number>;
-  const demandOf: Record<number, number> = { [K.RES]: st.demandR, [K.COM]: st.demandC, [K.IND]: st.demandI };
+  const demandOf = (def: ZoneDef): number =>
+    def.kind === K.RES || def.kind === K.RESH
+      ? st.demandR
+      : def.kind === K.COM || def.kind === K.COMH
+        ? st.demandC
+        : def.kind === K.IND
+          ? st.demandI
+          : st.demandO;
+  const spawned: Record<number, number> = {};
   let changed = false;
   let xp = 0;
 
@@ -167,22 +241,29 @@ function grow(s: GameState): number {
   for (let n = 0; n < g.count; n++) {
     const i = (start + n * step) % g.count;
     const k = g.kind[i];
-    if (!isZoneKind(k)) continue;
+    if (!isZoneKind(k) || g.abandoned[i]) continue;
     // 도로 접근 + 전력 + 수도 + 하수가 모두 있어야 성장
     if (g.access[i] < 0 || !g.powered[i] || !g.watered[i] || !g.sewered[i]) continue;
-    const d = demandOf[k];
+    const def = ZONE_BY_KIND[k];
+    const d = demandOf(def);
     const lv = g.level[i];
+    const land = g.landValue[i];
 
     if (lv === 0) {
-      if (d > 0 && spawned[k] < GROWTH.maxSpawnPerTick && Math.random() < GROWTH.spawnChance * d) {
+      if (
+        d > 0 &&
+        (spawned[k] ?? 0) < GROWTH.maxSpawnPerTick &&
+        meetsRequirements(s, def, 1, land) &&
+        Math.random() < GROWTH.spawnChance * d
+      ) {
         g.level[i] = 1;
         g.progress[i] = 0;
         g.variant[i] = Math.floor(Math.random() * 256);
-        spawned[k]++;
+        spawned[k] = (spawned[k] ?? 0) + 1;
         changed = true;
         xp += XP_AWARD.building;
       }
-    } else if (lv < MAX_LEVEL && d > GROWTH.minDemandForLevel[lv + 1]) {
+    } else if (lv < MAX_LEVEL && d > GROWTH.minDemandForLevel[lv + 1] && meetsRequirements(s, def, lv + 1, land)) {
       g.progress[i] += GROWTH.levelBase + GROWTH.levelPerDemand * d;
       if (g.progress[i] >= 1) {
         g.level[i] = lv + 1;
@@ -196,6 +277,43 @@ function grow(s: GameState): number {
   return xp;
 }
 
+/**
+ * 폐허: 도로 접근·전력·수도·하수 중 하나가 ABANDON.ticks 동안 끊긴 건물은 폐허가 된다.
+ * 폐허는 주민·일자리·세금이 없고 어둡게 보이며, 조건이 회복되면 서서히 되살아난다.
+ */
+function updateAbandonment(s: GameState): void {
+  const g = s.grid;
+  let newly = 0;
+  let changed = false;
+  for (let i = 0; i < g.count; i++) {
+    if (!isZoneKind(g.kind[i]) || g.level[i] === 0) {
+      if (g.neglect[i] !== 0) g.neglect[i] = 0;
+      if (g.abandoned[i]) g.abandoned[i] = 0;
+      continue;
+    }
+    const ok = g.access[i] >= 0 && g.powered[i] === 1 && g.watered[i] === 1 && g.sewered[i] === 1;
+    if (!ok) {
+      if (g.neglect[i] < 255) g.neglect[i]++;
+      if (g.neglect[i] >= ABANDON.ticks && !g.abandoned[i]) {
+        g.abandoned[i] = 1;
+        newly++;
+        changed = true;
+      }
+    } else if (g.neglect[i] > 0) {
+      g.neglect[i] = Math.max(0, g.neglect[i] - ABANDON.recoverPerTick);
+      if (g.neglect[i] === 0 && g.abandoned[i]) {
+        g.abandoned[i] = 0;
+        changed = true;
+      }
+    }
+  }
+  if (changed) s.dirty.buildings = true;
+  if (newly > 0 && s.tick - s.lastAbandonToast >= ABANDON.toastCooldown) {
+    s.lastAbandonToast = s.tick;
+    s.toast(`🏚️ 건물 ${newly}채가 폐허가 되었습니다. 도로 접근·전력·상수도·하수를 확인하세요`, 'bad');
+  }
+}
+
 /** 1틱(게임 내 하루) 진행 */
 export function tick(s: GameState): void {
   if (s.gameOver) return;
@@ -204,11 +322,13 @@ export function tick(s: GameState): void {
   refreshStats(s);
   const xp = grow(s);
   updateEnvironment(s);
-  updateFires(s);
   if (s.waterPollution > 0.3 && !s.waterWarned) {
     s.waterWarned = true;
     s.toast('⚠️ 수질이 오염되고 있습니다. 폐수 처리장을 지으세요 (개발 트리)', 'bad');
   } else if (s.waterPollution < 0.1) s.waterWarned = false;
+  updateFires(s);
+  updateEducation(s);
+  updateAbandonment(s);
 
   // 행복도는 목표치를 향해 서서히 이동
   s.happiness = lerp(s.happiness, s.happinessTarget, HAPPINESS.smoothing);

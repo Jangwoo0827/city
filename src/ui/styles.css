@@ -589,7 +589,7 @@ kbd {
     width: 58px;
   }
   #rci {
-    top: 282px;
+    top: 352px;
     bottom: auto;
     left: 8px;
     transform: scale(0.82);
@@ -949,4 +949,11 @@ kbd {
   #utils {
     bottom: 160px;
   }
+}
+
+#rci .O i {
+  background: #9b6bd6;
+}
+#rci {
+  gap: 8px;
 }

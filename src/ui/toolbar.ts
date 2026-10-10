@@ -4,7 +4,8 @@ import { isUnlocked } from '../game/progression';
 import { COST } from '../utils/constants';
 import { FACILITIES, FACILITY_LIST, FAC, FacilityCategory, ROAD_TYPES } from '../data/catalog';
 import { DEV_NODE_MAP } from '../data/devtree';
-import { ZONE_NAME, ZoneType } from '../world/zones';
+import { ZoneType } from '../world/zones';
+import { ZONES } from '../data/zones';
 
 type Listener = () => void;
 
@@ -74,12 +75,6 @@ const TOOLS: ToolDef[] = [
   { tool: 'select', icon: '🔍', name: '정보', hint: '타일·건물 정보 보기' },
 ];
 
-const ZONES: { z: ZoneType; key: string }[] = [
-  { z: 'R', key: 'R' },
-  { z: 'C', key: 'C' },
-  { z: 'I', key: 'I' },
-];
-
 const CATEGORY_NAME: Record<FacilityCategory, string> = {
   power: '전력',
   water: '상수도',
@@ -88,8 +83,11 @@ const CATEGORY_NAME: Record<FacilityCategory, string> = {
   police: '치안',
   fire: '소방',
   park: '공원',
+  edu1: '초등',
+  edu2: '고등',
+  edu3: '대학',
 };
-const CATEGORY_ORDER: FacilityCategory[] = ['power', 'water', 'sewage', 'health', 'police', 'fire', 'park'];
+const CATEGORY_ORDER: FacilityCategory[] = ['power', 'water', 'sewage', 'health', 'police', 'fire', 'park', 'edu1', 'edu2', 'edu3'];
 
 export interface ToolbarUI {
   /** 해금 상태 등이 바뀌었을 수 있을 때 다시 그린다 */
@@ -104,13 +102,18 @@ export function createToolbar(root: HTMLElement, tools: ToolController, state: G
   const zoneBar = document.createElement('div');
   zoneBar.className = 'subbar';
   const zoneBtns = new Map<ZoneType, HTMLButtonElement>();
-  for (const { z, key } of ZONES) {
+  for (const zd of ZONES) {
     const b = document.createElement('button');
-    b.className = `sub-btn zone-btn zone-${z}`;
-    b.innerHTML = `<span class="swatch"></span>${ZONE_NAME[z]}<kbd>${key}</kbd>`;
-    b.addEventListener('click', () => tools.setZone(z));
+    b.className = `sub-btn zone-btn zone-${zd.id}`;
+    b.addEventListener('click', () => {
+      if (!isUnlocked(state, zd.node)) {
+        state.toast(`🔒 ${zd.name} 구역: 개발 트리(🏆)에서 해금하세요`, 'bad');
+        return;
+      }
+      tools.setZone(zd.id);
+    });
     zoneBar.appendChild(b);
-    zoneBtns.set(z, b);
+    zoneBtns.set(zd.id, b);
   }
 
   // ── 서브바: 도로 종류 ──
@@ -185,7 +188,14 @@ export function createToolbar(root: HTMLElement, tools: ToolController, state: G
 
   const sync = (): void => {
     for (const [t, b] of toolBtns) b.classList.toggle('active', t === tools.tool);
-    for (const [z, b] of zoneBtns) b.classList.toggle('active', z === tools.zone);
+    for (const zd of ZONES) {
+      const b = zoneBtns.get(zd.id)!;
+      const locked = !isUnlocked(state, zd.node);
+      b.innerHTML = `<span class="swatch" style="background:#${zd.color.toString(16).padStart(6, '0')}"></span>${locked ? '🔒 ' : ''}${zd.name}<kbd>${zd.key}</kbd>`;
+      b.classList.toggle('active', zd.id === tools.zone && tools.tool === 'zone');
+      b.classList.toggle('locked', locked);
+      b.title = locked ? '🔒 개발 트리에서 해금' : zd.desc;
+    }
     zoneBar.classList.toggle('show', tools.tool === 'zone');
     roadBar.classList.toggle('show', tools.tool === 'road');
     facBar.classList.toggle('show', tools.tool === 'facility');

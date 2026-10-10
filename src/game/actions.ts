@@ -1,4 +1,5 @@
-import { COST, REFUND, XP_AWARD } from '../utils/constants';
+import { BRIDGE, COST, REFUND, XP_AWARD } from '../utils/constants';
+import { ZONE_BY_ID } from '../data/zones';
 import { FACILITIES, ROAD_TYPES } from '../data/catalog';
 import { DIRS, Grid, K, Tile, isZoneKind } from '../world/grid';
 import { straightLine } from '../world/roads';
@@ -52,19 +53,21 @@ function planRoad(s: GameState, type: number, a: Tile, b: Tile): Plan {
     if (!g.inBounds(t.x, t.y)) continue;
     const i = g.idx(t.x, t.y);
     const k = g.kind[i];
-    const open = s.isUnlockedAt(t.x, t.y) && !g.isWater(t.x, t.y);
+    const open = s.isUnlockedAt(t.x, t.y);
+    // 물 위에는 다리를 놓을 수 있다 (건설비 ×BRIDGE.costMult)
+    const mult = g.isWater(t.x, t.y) ? BRIDGE.costMult : 1;
     if (!open) tiles.push({ ...t, ok: false });
     else if (k === K.ROAD) {
       const cur = g.roadType[i];
       tiles.push({ ...t, ok: true });
       if (type > cur) {
         placeable.push(t);
-        costs.push(def.cost - ROAD_TYPES[cur].cost);
+        costs.push(Math.round((def.cost - ROAD_TYPES[cur].cost) * mult));
       }
     } else if (k === K.EMPTY) {
       tiles.push({ ...t, ok: true });
       placeable.push(t);
-      costs.push(def.cost);
+      costs.push(Math.round(def.cost * mult));
     } else tiles.push({ ...t, ok: false });
   }
   return { tiles, placeable, costs };
@@ -73,9 +76,11 @@ function planRoad(s: GameState, type: number, a: Tile, b: Tile): Plan {
 function planZone(s: GameState, zone: ZoneType, a: Tile, b: Tile): Plan {
   const g = s.grid;
   const kind = ZONE_KIND[zone];
+  const zdef = ZONE_BY_ID[zone];
   const tiles: PreviewTile[] = [];
   const placeable: Tile[] = [];
   const costs: number[] = [];
+  if (!isUnlocked(s, zdef.node)) return { tiles: [], placeable, costs, blocked: `${zdef.name} 구역은 개발 트리에서 해금해야 합니다` };
   for (const t of rectTiles(a, b)) {
     if (!g.inBounds(t.x, t.y)) continue;
     const i = g.idx(t.x, t.y);
@@ -134,7 +139,7 @@ function planDemolish(s: GameState, a: Tile, b: Tile): Plan {
     tiles.push({ ...t, ok });
     if (!ok) continue;
     let refund = 0;
-    if (k === K.ROAD) refund = ROAD_TYPES[g.roadType[i]].cost * REFUND.rate;
+    if (k === K.ROAD) refund = ROAD_TYPES[g.roadType[i]].cost * REFUND.rate * (g.isWater(t.x, t.y) ? BRIDGE.costMult : 1);
     else if (isZoneKind(k)) refund = COST.zone * REFUND.rate + g.level[i] * REFUND.perBuildingLevel;
     else if (k === K.FAC) {
       const owner = g.owner[i];
@@ -176,12 +181,15 @@ export function previewAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile,
   if (plan.blocked) label = plan.blocked;
   else {
     switch (tool) {
-      case 'road':
+      case 'road': {
+        const bridges = plan.placeable.filter((t) => s.grid.isWater(t.x, t.y)).length;
         label = n > 0 ? `${ROAD_TYPES[o.roadType].name} ${n}칸` : ROAD_TYPES[o.roadType].name;
+        if (bridges > 0) label += ` (다리 ${bridges}칸 ×${BRIDGE.costMult})`;
         break;
+      }
       case 'zone': {
         const d = ROAD_TYPES[0].depth;
-        label = n > 0 ? `${ZONE_NAME[o.zone]} 구역 ${n}칸` : `${ZONE_NAME[o.zone]} 구역 (도로에서 ${d}칸 이내만 가능)`;
+        label = n > 0 ? `${ZONE_NAME[o.zone]} 구역 ${n}칸` : `${ZONE_NAME[o.zone]} 구역 (도로에서 ${d}칸 이내 · 물 위 불가)`;
         break;
       }
       case 'facility': {
@@ -248,6 +256,8 @@ export function applyAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile, b
         g.kind[i] = ZONE_KIND[o.zone];
         g.level[i] = 0;
         g.progress[i] = 0;
+        g.abandoned[i] = 0;
+        g.neglect[i] = 0;
         break;
       case 'facility': {
         const def = FACILITIES[o.facility];
@@ -294,6 +304,8 @@ export function demolishTile(g: Grid, x: number, y: number): void {
   g.kind[i] = K.EMPTY;
   g.level[i] = 0;
   g.progress[i] = 0;
+  g.abandoned[i] = 0;
+  g.neglect[i] = 0;
   g.roadType[i] = 0;
   g.powered[i] = g.watered[i] = g.sewered[i] = 0;
 }

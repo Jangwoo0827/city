@@ -1,13 +1,15 @@
 import { GameState } from '../game/state';
 import { taxMultiplier } from '../game/economy';
+import { landTaxMultiplier } from '../game/landvalue';
+import { meetsRequirements } from '../game/simulation';
 import { effectiveCapacity, powerUse, sewageUse, waterUse } from '../game/network';
 import { isServiceCategory } from '../data/catalog';
 import { GROWTH, MAX_LEVEL } from '../utils/constants';
 import { ROAD_TYPES } from '../data/catalog';
 import { K, Tile, isZoneKind } from '../world/grid';
-import { BUILDING_NAME, KIND_NAME, buildingStats, facilityAt } from '../world/buildings';
+import { BUILDING_NAME, KIND_NAME, buildingStats, facilityAt, jobClassOf } from '../world/buildings';
 import { roadMask } from '../world/roads';
-import { ZONE_NAME, zoneTypeOfKind } from '../world/zones';
+import { ZONE_BY_KIND, ZoneDef } from '../data/zones';
 
 /** 마우스 커서를 따라다니는 비용/상태 툴팁 */
 export class Tooltip {
@@ -102,36 +104,43 @@ export class InfoPanel {
     };
 
     if (isZoneKind(k)) {
-      const zt = zoneTypeOfKind(k)!;
+      const zd: ZoneDef = ZONE_BY_KIND[k];
       const lv = g.level[i];
+      const dead = g.abandoned[i] === 1;
+      const land = g.landValue[i];
       const road = g.access[i] >= 0;
       const powered = g.powered[i] === 1;
       const watered = g.watered[i] === 1;
       const sewered = g.sewered[i] === 1;
-      const demand = zt === 'R' ? s.stats.demandR : zt === 'C' ? s.stats.demandC : s.stats.demandI;
+      const demand =
+        zd.id === 'R' || zd.id === 'RH' ? s.stats.demandR : zd.id === 'C' || zd.id === 'CH' ? s.stats.demandC : zd.id === 'I' ? s.stats.demandI : s.stats.demandO;
       if (lv > 0) {
-        title = `${BUILDING_NAME[k]} Lv.${lv}`;
+        title = `${BUILDING_NAME[k]} Lv.${lv}${dead ? ' (폐허)' : ''}`;
         const b = buildingStats(k, lv);
-        row('구역', ZONE_NAME[zt]);
+        row('구역', zd.name);
+        if (dead) row('상태', '<span class="no">🏚️ 폐허 — 도로·전력·수도·하수를 복구하세요</span>');
         if (b.pop) row('주민', `${b.pop}명`);
         if (b.jobs) row('일자리', `${b.jobs}개`);
-        const paying = powered && watered && sewered;
-        row('세금', paying ? `+${(b.tax * taxMultiplier(s.happiness)).toFixed(1)}/일` : '납세 없음');
+        const paying = powered && watered && sewered && !dead;
+        row('세금', paying ? `+${(b.tax * taxMultiplier(s.happiness) * landTaxMultiplier(land)).toFixed(1)}/일` : '납세 없음');
+        if (b.jobs) row('요구 학력', ({ low: '누구나', skilled: '고등학교 이상', high: '대학교' } as Record<string, string>)[jobClassOf(k, lv) ?? 'low']);
         if (lv < MAX_LEVEL) {
           const pct = Math.min(100, Math.round(g.progress[i] * 100));
           const need = GROWTH.minDemandForLevel[lv + 1];
-          row('성장', !paying ? '공급 부족' : demand > need ? `${pct}%` : '수요 부족');
+          const nextOk = meetsRequirements(s, zd, lv + 1, land);
+          row('성장', dead || !paying ? '공급 부족' : !nextOk ? growBlock(s, zd, lv + 1, land) : demand > need ? `${pct}%` : '수요 부족');
           rows.push(`<div class="bar"><i style="width:${pct}%"></i></div>`);
         } else {
           row('성장', '최고 레벨');
         }
         row('전력 / 수도 / 하수', `${(powerUse(k, lv)).toFixed(1)} / ${waterUse(k, lv).toFixed(1)} / ${sewageUse(k, lv).toFixed(1)}`);
       } else {
-        title = `${ZONE_NAME[zt]} 구역 (빈 땅)`;
+        title = `${zd.name} 구역 (빈 땅)`;
         if (!road) row('상태', '<span class="no">도로에서 너무 멀음</span>');
         else if (!powered) row('상태', '<span class="no">전력 필요</span>');
         else if (!watered) row('상태', '<span class="no">상수도 필요</span>');
         else if (!sewered) row('상태', '<span class="no">하수 처리 필요</span>');
+        else if (!meetsRequirements(s, zd, 1, land)) row('상태', `<span class="warn">${growBlock(s, zd, 1, land)}</span>`);
         else if (demand <= 0) row('상태', '<span class="warn">수요 부족</span>');
         else row('상태', '<span class="ok">건설 대기 중</span>');
       }
@@ -141,9 +150,10 @@ export class InfoPanel {
       row('하수', yes(sewered, '처리 중', '끊김'));
       const pct = (v: number): string => `${Math.round(v * 100)}%`;
       row('의료 / 치안 / 소방', `${pct(s.cov.health[i])} / ${pct(s.cov.police[i])} / ${pct(s.cov.fire[i])}`);
-      row('공원', pct(s.cov.park[i]));
+      row('공원 / 교육(초·고·대)', `${pct(s.cov.park[i])} / ${pct(s.cov.edu1[i])}·${pct(s.cov.edu2[i])}·${pct(s.cov.edu3[i])}`);
+      row('땅값', `<b style="color:${land >= 60 ? 'var(--good)' : land >= 40 ? '#f2c94c' : 'var(--bad)'}">${Math.round(land)}</b>`);
       if (s.fires.has(i)) row('상태', '<span class="no">🔥 화재 진행 중</span>');
-      if (zt === 'R' && lv > 0) {
+      if ((zd.id === 'R' || zd.id === 'RH') && lv > 0) {
         const pol = Math.min(1, s.pollution[i]);
         row('오염도', pol > 0.05 ? `<span class="no">${Math.round(pol * 100)}%</span>` : '<span class="ok">깨끗함</span>');
       }
@@ -203,4 +213,15 @@ function manhattan(g: GameState['grid'], i: number): number {
   const r = g.access[i];
   if (r < 0) return 0;
   return Math.abs((r % g.size) - (i % g.size)) + Math.abs(((r / g.size) | 0) - ((i / g.size) | 0));
+}
+
+/** 해당 레벨로 성장하지 못하는 이유 (땅값 또는 학력) */
+function growBlock(s: GameState, zd: ZoneDef, level: number, land: number): string {
+  if (land < zd.minLandValue[level]) return `땅값 부족 (${Math.round(land)} / ${zd.minLandValue[level]})`;
+  const e = zd.minEdu[level];
+  if (e) {
+    const have = e.level === 2 ? s.edu.a2 : s.edu.a3;
+    return `${e.level === 2 ? '고등학교' : '대학교'} 이수율 부족 (${Math.round(have * 100)}% / ${Math.round(e.share * 100)}%)`;
+  }
+  return '조건 부족';
 }

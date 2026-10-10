@@ -1,6 +1,7 @@
-import { LOAN, TAX_HAPPY_MULT, TAX_PER_LEVEL } from '../utils/constants';
+import { LOAN, TAX_HAPPY_MULT } from '../utils/constants';
+import { ZONE_BY_KIND } from '../data/zones';
+import { landTaxMultiplier } from './landvalue';
 import { lerp } from '../utils/math';
-import { K } from '../world/grid';
 import { GameState } from './state';
 
 /** 행복도에 따른 세수 배율 */
@@ -16,10 +17,10 @@ export function computeEconomy(s: GameState): { income: number; expense: number 
   let weighted = 0;
   for (let i = 0; i < g.count; i++) {
     const lv = g.level[i];
-    if (lv === 0 || !g.powered[i] || !g.watered[i] || !g.sewered[i]) continue;
-    const k = g.kind[i];
-    const rate = k === K.RES ? TAX_PER_LEVEL.R : k === K.COM ? TAX_PER_LEVEL.C : k === K.IND ? TAX_PER_LEVEL.I : 0;
-    weighted += lv * rate;
+    if (lv === 0 || g.abandoned[i] || !g.powered[i] || !g.watered[i] || !g.sewered[i]) continue;
+    const def = ZONE_BY_KIND[g.kind[i]];
+    if (!def) continue;
+    weighted += lv * def.tax * landTaxMultiplier(g.landValue[i]);
   }
   const income = weighted * taxMultiplier(s.happiness);
   const interest = s.loan * LOAN.interestPerDay;

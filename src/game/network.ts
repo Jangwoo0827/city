@@ -1,14 +1,13 @@
-import { FAC, FACILITIES, FacilityCategory, POWER_USE, SEWAGE_RATIO, WATER_USE } from '../data/catalog';
+import { FAC, FACILITIES, FacilityCategory, SEWAGE_RATIO } from '../data/catalog';
+import { ZONE_BY_KIND } from '../data/zones';
 import { GROUNDWATER, WATER_POLLUTION } from '../utils/constants';
 import { DIRS, K, isZoneKind } from '../world/grid';
 import { facilityFootprint, facilityList } from '../world/buildings';
 import { GameState } from './state';
 
 /** 구역 타일의 카테고리별 사용량 (건물이 없으면 레벨 1 기준 = 성장 여유 확인용) */
-const kindKey = (k: number): 'R' | 'C' | 'I' => (k === K.RES ? 'R' : k === K.COM ? 'C' : 'I');
-
-export const powerUse = (kind: number, level: number): number => POWER_USE[kindKey(kind)] * level;
-export const waterUse = (kind: number, level: number): number => WATER_USE[kindKey(kind)] * level;
+export const powerUse = (kind: number, level: number): number => (ZONE_BY_KIND[kind]?.power ?? 0) * level;
+export const waterUse = (kind: number, level: number): number => (ZONE_BY_KIND[kind]?.water ?? 0) * level;
 export const sewageUse = (kind: number, level: number): number => waterUse(kind, level) * SEWAGE_RATIO;
 
 /** 시설의 현재 유효 용량 */
@@ -154,10 +153,11 @@ export function computeNetworks(s: GameState): void {
       if (cat === 'power') use = powerUse(kind, Math.max(1, lv));
       else if (cat === 'water') use = waterUse(kind, Math.max(1, lv));
       else use = g.watered[i] || lv === 0 ? sewageUse(kind, Math.max(1, lv)) : 0;
+      // 빈 구역·폐허는 용량이 남아 있을 때만 "공급 가능"으로 표시하고 용량을 소비하지 않는다
       if (remaining[c] >= use) {
-        remaining[c] -= use;
         out[i] = 1;
-        if (lv > 0) {
+        if (lv > 0 && !g.abandoned[i]) {
+          remaining[c] -= use;
           served += use;
           builtServed++;
         }
@@ -168,7 +168,7 @@ export function computeNetworks(s: GameState): void {
     // 요구량(접근 가능 여부와 무관한 모든 건물)
     for (let i = 0; i < n; i++) {
       const lv = g.level[i];
-      if (lv === 0 || !isZoneKind(g.kind[i])) continue;
+      if (lv === 0 || !isZoneKind(g.kind[i]) || g.abandoned[i]) continue;
       if (cat === 'power') demand += powerUse(g.kind[i], lv);
       else if (cat === 'water') demand += waterUse(g.kind[i], lv);
       else if (g.watered[i]) demand += sewageUse(g.kind[i], lv);

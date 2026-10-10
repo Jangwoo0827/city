@@ -4,6 +4,7 @@ import { damp } from '../utils/math';
 import { GameState } from '../game/state';
 import { DIRS, K } from '../world/grid';
 import { box, merge } from './geometry';
+import { BRIDGE_LIFT } from './instancing';
 
 interface Car {
   /** 현재 타일 */
@@ -156,7 +157,11 @@ export class Cars {
       c.offX = damp(c.offX, -dz * LANE_OFFSET, 10, dt);
       c.offZ = damp(c.offZ, dx * LANE_OFFSET, 10, dt);
 
-      d.position.set(c.x + 0.5 + dx * c.t + c.offX, CAR_Y, c.y + 0.5 + dz * c.t + c.offZ);
+      // 다리 위에서는 상판 높이만큼 올라간다
+      const tx = c.t < 0.5 ? c.x : c.x + dx;
+      const ty = c.t < 0.5 ? c.y : c.y + dz;
+      const lift = this.state.grid.isWater(tx, ty) ? BRIDGE_LIFT : 0;
+      d.position.set(c.x + 0.5 + dx * c.t + c.offX, CAR_Y + lift, c.y + 0.5 + dz * c.t + c.offZ);
       d.rotation.set(0, c.yaw, 0);
       d.scale.setScalar(1.25);
       d.updateMatrix();
