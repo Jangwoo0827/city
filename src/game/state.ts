@@ -159,7 +159,7 @@ export class GameState {
   waterWarned = false;
 
   /** 렌더러/시뮬레이션이 읽고 지우는 변경 플래그 */
-  dirty = { roads: true, zones: true, buildings: true, net: true, sections: true };
+  dirty = { roads: true, zones: true, buildings: true, net: true, sections: true, terrain: true };
 
   private listeners: { [K in keyof GameEvents]: GameEvents[K][] } = {
     toast: [],
@@ -186,7 +186,7 @@ export class GameState {
   }
 
   markAllDirty(): void {
-    this.dirty.roads = this.dirty.zones = this.dirty.buildings = this.dirty.net = this.dirty.sections = true;
+    this.dirty.roads = this.dirty.zones = this.dirty.buildings = this.dirty.net = this.dirty.sections = this.dirty.terrain = true;
   }
 
   resetSections(): void {

@@ -88,7 +88,7 @@ export class InfoPanel {
   render(): void {
     this.onChange(this.footprint());
     if (!this.tile) {
-      this.setHtml('<div class="title">정보</div><div class="hint">‘정보’ 도구(5)로 타일이나 건물을 클릭하면 상세 정보가 표시됩니다.</div>');
+      this.setHtml('<div class="title">정보</div><div class="hint">‘정보’ 도구(6)로 타일이나 건물을 클릭하면 상세 정보가 표시됩니다.</div>');
       return;
     }
     const s = this.state;
@@ -183,7 +183,7 @@ export class InfoPanel {
         }
       } else {
         const linked = g.powered[i] === 1 || g.watered[i] === 1 || g.sewered[i] === 1;
-        const cap = effectiveCapacity(s, f.def.id);
+        const cap = effectiveCapacity(s, f.def.id, f);
         const unit = f.def.category === 'power' ? '전력' : f.def.category === 'water' ? '급수량' : '하수 처리량';
         row(unit, `${cap.toFixed(1)} / ${f.def.capacity}`);
         row('도로 연결', yes(linked, '연결됨', '도로에 붙여 설치하세요'));

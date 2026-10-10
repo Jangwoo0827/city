@@ -19,8 +19,9 @@ const TOOL_KEYS: Record<string, Tool> = {
   Digit1: 'road',
   Digit2: 'zone',
   Digit3: 'facility',
-  Digit4: 'demolish',
-  Digit5: 'select',
+  Digit4: 'terrain',
+  Digit5: 'demolish',
+  Digit6: 'select',
 };
 
 export interface InputHooks {

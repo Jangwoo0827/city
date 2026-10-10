@@ -241,3 +241,13 @@ export const BRIDGE = {
   costMult: 2.65,
   upkeepMult: 2,
 };
+
+// ── 지형 편집 (강·호수 만들기 / 땅 메우기) ───────────────
+export const TERRAIN = {
+  /** 물로 파는 비용 (칸당) */
+  digCost: 8,
+  /** 물을 메워 땅으로 만드는 비용 (칸당) */
+  fillCost: 10,
+  /** 파기 브러시 폭 선택지 */
+  widths: [1, 3, 5],
+};

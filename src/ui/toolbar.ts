@@ -1,7 +1,7 @@
-import type { Tool, ToolOptions } from '../game/actions';
+import type { TerrainMode, Tool, ToolOptions } from '../game/actions';
 import { GameState } from '../game/state';
 import { isUnlocked } from '../game/progression';
-import { COST } from '../utils/constants';
+import { COST, TERRAIN } from '../utils/constants';
 import { FACILITIES, FACILITY_LIST, FAC, FacilityCategory, ROAD_TYPES } from '../data/catalog';
 import { DEV_NODE_MAP } from '../data/devtree';
 import { ZoneType } from '../world/zones';
@@ -15,6 +15,8 @@ export class ToolController {
   zone: ZoneType = 'R';
   facility: number = FAC.WIND;
   roadType = 0;
+  terrain: TerrainMode = 'dig';
+  digWidth = 3;
   /** 터치 기기에서 한 손가락 드래그가 이동(false)인지 건설(true)인지 */
   touchBuild = false;
   private listeners: Listener[] = [];
@@ -24,7 +26,7 @@ export class ToolController {
   }
 
   options(): ToolOptions {
-    return { zone: this.zone, facility: this.facility, roadType: this.roadType };
+    return { zone: this.zone, facility: this.facility, roadType: this.roadType, terrain: this.terrain, width: this.digWidth };
   }
 
   setTool(t: Tool): void {
@@ -50,6 +52,19 @@ export class ToolController {
     this.fire();
   }
 
+  setTerrain(mode: TerrainMode): void {
+    this.terrain = mode;
+    this.tool = 'terrain';
+    this.fire();
+  }
+
+  setDigWidth(w: number): void {
+    this.digWidth = w;
+    this.terrain = 'dig';
+    this.tool = 'terrain';
+    this.fire();
+  }
+
   setTouchBuild(v: boolean): void {
     this.touchBuild = v;
     this.fire();
@@ -71,6 +86,7 @@ const TOOLS: ToolDef[] = [
   { tool: 'road', icon: '🛣️', name: '도로', hint: '드래그로 직선 설치 · 같은 자리에 더 큰 도로를 덮으면 업그레이드' },
   { tool: 'zone', icon: '🏘️', name: '구역', hint: `타일당 ₩${COST.zone} · 도로 근처에 드래그로 지정` },
   { tool: 'facility', icon: '⚡', name: '시설', hint: '발전소·상하수도 시설' },
+  { tool: 'terrain', icon: '🌊', name: '지형', hint: `강·호수 만들기(칸당 ₩${TERRAIN.digCost}) / 물 메우기(칸당 ₩${TERRAIN.fillCost})` },
   { tool: 'demolish', icon: '🧨', name: '철거', hint: '드래그로 영역 철거 · 건설비의 50% 환급' },
   { tool: 'select', icon: '🔍', name: '정보', hint: '타일·건물 정보 보기' },
 ];
@@ -134,6 +150,31 @@ export function createToolbar(root: HTMLElement, tools: ToolController, state: G
     roadBtns.push(b);
   }
 
+  // ── 서브바: 지형 ──
+  const terrainBar = document.createElement('div');
+  terrainBar.className = 'subbar';
+  const digBtn = document.createElement('button');
+  digBtn.className = 'sub-btn';
+  digBtn.innerHTML = `<span>⛏️ 물 만들기 (강·호수)</span><small>드래그한 직선 · ₩${TERRAIN.digCost}/칸</small>`;
+  digBtn.addEventListener('click', () => tools.setTerrain('dig'));
+  const fillBtn = document.createElement('button');
+  fillBtn.className = 'sub-btn';
+  fillBtn.innerHTML = `<span>🧱 땅 메우기</span><small>드래그한 영역 · ₩${TERRAIN.fillCost}/칸</small>`;
+  fillBtn.addEventListener('click', () => tools.setTerrain('fill'));
+  const widthBtns: HTMLButtonElement[] = [];
+  const widthBox = document.createElement('div');
+  widthBox.className = 'fac-group';
+  widthBox.innerHTML = '<span class="fac-cat">폭</span>';
+  for (const w of TERRAIN.widths) {
+    const b = document.createElement('button');
+    b.className = 'sub-btn';
+    b.innerHTML = `<span>${w}칸</span>`;
+    b.addEventListener('click', () => tools.setDigWidth(w));
+    widthBox.appendChild(b);
+    widthBtns.push(b);
+  }
+  terrainBar.append(digBtn, fillBtn, widthBox);
+
   // ── 서브바: 시설 ──
   const facBar = document.createElement('div');
   facBar.className = 'subbar wide';
@@ -188,7 +229,7 @@ export function createToolbar(root: HTMLElement, tools: ToolController, state: G
   touchToggle.addEventListener('click', () => tools.setTouchBuild(!tools.touchBuild));
   if (window.matchMedia('(pointer: coarse)').matches) wrap.classList.add('touch');
 
-  wrap.append(zoneBar, roadBar, facBar, bar, touchToggle);
+  wrap.append(zoneBar, roadBar, terrainBar, facBar, bar, touchToggle);
   root.appendChild(wrap);
 
   const lockLabel = (node: string | null): string => {
@@ -210,6 +251,11 @@ export function createToolbar(root: HTMLElement, tools: ToolController, state: G
     zoneBar.classList.toggle('show', tools.tool === 'zone');
     roadBar.classList.toggle('show', tools.tool === 'road');
     facBar.classList.toggle('show', tools.tool === 'facility');
+    terrainBar.classList.toggle('show', tools.tool === 'terrain');
+    digBtn.classList.toggle('active', tools.tool === 'terrain' && tools.terrain === 'dig');
+    fillBtn.classList.toggle('active', tools.tool === 'terrain' && tools.terrain === 'fill');
+    widthBtns.forEach((b, i) => b.classList.toggle('active', tools.terrain === 'dig' && tools.digWidth === TERRAIN.widths[i]));
+    widthBox.style.opacity = tools.terrain === 'dig' ? '1' : '0.4';
 
     ROAD_TYPES.forEach((rt, i) => {
       const locked = !isUnlocked(state, rt.node);

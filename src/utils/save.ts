@@ -2,7 +2,8 @@ import { GameState } from '../game/state';
 import { refreshStats } from '../game/simulation';
 import { LEGACY_GRID_SIZE, LEGACY_OFFSET, SAVE_KEY, SECTION_SIZE, SECTIONS_PER_SIDE, START_SECTIONS } from './constants';
 import { clamp } from './math';
-import { K } from '../world/grid';
+import { K, T } from '../world/grid';
+import { generateTerrain, recomputeWaterNear } from '../world/terrain';
 import { facilityFootprint, facilityList } from '../world/buildings';
 import { FAC, FACILITIES } from '../data/catalog';
 import { MAX_MILESTONE, MILESTONES_20, START_DEV_POINTS, START_LOAN_LIMIT } from '../data/milestones';
@@ -29,6 +30,8 @@ export interface SaveV2 {
   progress: string;
   variant: string;
   roadType: string;
+  /** 지형 레이어(0 땅 / 1 물). 구버전 저장에는 없고 이때는 기본 지형을 쓴다 */
+  terrain?: string;
   /** 폐허 레이어 (구버전 저장에는 없음) */
   abandoned?: string;
   /** 시민 교육 이수율 [초등, 고등, 대학] (구버전 저장에는 없음) */
@@ -101,6 +104,7 @@ export function serializeGame(s: GameState): SaveV2 {
     progress: toB64(progress),
     variant: toB64(g.variant),
     roadType: toB64(g.roadType),
+    terrain: toB64(g.terrain),
     abandoned: toB64(g.abandoned),
     edu: [s.edu.a1, s.edu.a2, s.edu.a3],
     facilities,
@@ -191,10 +195,17 @@ export function deserializeGame(s: GameState, raw: unknown): boolean {
     const progress = decodeLayer(d.progress, g.count, g.size).data;
     const variant = decodeLayer(d.variant, g.count, g.size).data;
     const roadType = decodeLayer(d.roadType, g.count, g.size).data;
+    const terrainL = d.terrain ? decodeLayer(d.terrain, g.count, g.size) : null;
     const abandonedL = d.abandoned ? decodeLayer(d.abandoned, g.count, g.size).data : null;
     if (!Number.isFinite(d.money) || !Number.isFinite(d.tick)) return false;
 
     g.clear();
+    // 지형: 저장된 레이어가 있으면 그대로(플레이어가 만든 강·메운 땅 포함), 없으면 기본 지형
+    generateTerrain(g);
+    if (terrainL && !terrainL.legacy) {
+      for (let i = 0; i < g.count; i++) g.terrain[i] = terrainL.data[i] ? T.WATER : T.LAND;
+      recomputeWaterNear(g);
+    }
     for (let i = 0; i < g.count; i++) {
       const k = kind[i];
       g.kind[i] = k === K.FAC || k > K.COMH ? K.EMPTY : k;

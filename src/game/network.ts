@@ -10,9 +10,15 @@ export const powerUse = (kind: number, level: number): number => (ZONE_BY_KIND[k
 export const waterUse = (kind: number, level: number): number => (ZONE_BY_KIND[kind]?.water ?? 0) * level;
 export const sewageUse = (kind: number, level: number): number => waterUse(kind, level) * SEWAGE_RATIO;
 
-/** 시설의 현재 유효 용량 */
-export function effectiveCapacity(s: GameState, facId: number): number {
+/** 시설 풋프린트 주변에 물 타일이 있는가 */
+function waterAdjacent(g: GameState['grid'], f: { x: number; y: number; def: (typeof FACILITIES)[number] }): boolean {
+  return facilityFootprint(f.def, f.x, f.y).some((t) => DIRS.some(([dx, dy]) => g.isWater(t.x + dx, t.y + dy)));
+}
+
+/** 시설의 현재 유효 용량 (물가 조건 시설은 곁의 물이 메워지면 0) */
+export function effectiveCapacity(s: GameState, facId: number, at?: { x: number; y: number }): number {
   const def = FACILITIES[facId];
+  if (at && def.needsWater && !waterAdjacent(s.grid, { x: at.x, y: at.y, def })) return 0;
   switch (facId) {
     case FAC.PUMP:
       return def.capacity * (1 - WATER_POLLUTION.intakePenalty * s.waterPollution);
@@ -86,7 +92,7 @@ export function computeNetworks(s: GameState): void {
 
     for (const f of facs) {
       if (f.def.category !== cat) continue;
-      const cap = effectiveCapacity(s, f.def.id);
+      const cap = effectiveCapacity(s, f.def.id, f);
       supply += cap;
       let comp0 = -1;
       for (const t of facilityFootprint(f.def, f.x, f.y)) {

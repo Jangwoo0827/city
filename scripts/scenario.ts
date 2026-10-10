@@ -7,7 +7,7 @@ import { LEGACY_OFFSET } from '../src/utils/constants';
 /** 시작 구역 기준 좌표(예전 64×64 좌표)를 현재 맵 좌표로 */
 export const T = (x: number, y: number): { x: number; y: number } => ({ x: x + LEGACY_OFFSET, y: y + LEGACY_OFFSET });
 
-const opts = (o: Partial<ToolOptions> = {}): ToolOptions => ({ zone: 'R', facility: FAC.WIND, roadType: 0, ...o });
+const opts = (o: Partial<ToolOptions> = {}): ToolOptions => ({ zone: 'R', facility: FAC.WIND, roadType: 0, terrain: 'dig', width: 3, ...o });
 
 /** 시작 구획(중앙 32×32) 안에 간단한 도시를 만든다. 테스트·시뮬레이터 공용. */
 export function buildStarterCity(s: GameState): void {

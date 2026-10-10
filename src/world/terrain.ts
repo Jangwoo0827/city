@@ -44,7 +44,11 @@ export function generateTerrain(g: Grid): void {
   ellipse(GRID_SIZE / 2, 10, 4, 3); // 북쪽 연못
   ellipse(GRID_SIZE / 2 + 4, GRID_SIZE - 10, 4, 3); // 남쪽 연못
 
-  // 수변(물에서 3칸 이내) 표시 — 땅값 보너스용
+  recomputeWaterNear(g);
+}
+
+/** 수변(물에서 3칸 이내) 표시 — 땅값 보너스용. 지형이 바뀔 때마다 다시 계산한다 */
+export function recomputeWaterNear(g: Grid): void {
   g.waterNear.fill(0);
   for (let y = 0; y < g.size; y++) {
     for (let x = 0; x < g.size; x++) {

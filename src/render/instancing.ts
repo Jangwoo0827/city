@@ -108,6 +108,7 @@ export class CityMeshes {
 
   /** [도로 종류][마스크] */
   private readonly roadMeshes: THREE.InstancedMesh[][] = [];
+  private waterMesh!: THREE.InstancedMesh;
   /** 다리 난간(마스크별)과 교각 */
   private readonly railMeshes: THREE.InstancedMesh[] = [];
   private pierMesh: THREE.InstancedMesh;
@@ -207,21 +208,28 @@ export class CityMeshes {
     this.buildSections();
   }
 
-  /** 물 타일 */
+  /** 물 타일 (지형 편집으로 바뀌면 다시 채운다) */
   private buildTerrain(): void {
-    const g = this.state.grid;
-    const water: number[] = [];
-    for (let i = 0; i < g.count; i++) if (g.terrain[i] === T.WATER) water.push(i);
     const mat = new THREE.MeshLambertMaterial({ color: COLORS.water, transparent: true, opacity: 0.92 });
-    const mesh = makeInstanced(new THREE.PlaneGeometry(1.002, 1.002).rotateX(-Math.PI / 2), mat, Math.max(1, water.length), 'water');
-    mesh.receiveShadow = true;
-    water.forEach((i, n) => {
+    this.waterMesh = makeInstanced(new THREE.PlaneGeometry(1.002, 1.002).rotateX(-Math.PI / 2), mat, 512, 'water');
+    this.waterMesh.receiveShadow = true;
+    this.group.add(this.waterMesh);
+    this.rebuildWater();
+  }
+
+  private rebuildWater(): void {
+    const g = this.state.grid;
+    let n = 0;
+    for (let i = 0; i < g.count; i++) if (g.terrain[i] === T.WATER) n++;
+    this.waterMesh = this.grow(this.waterMesh, n);
+    let k = 0;
+    for (let i = 0; i < g.count; i++) {
+      if (g.terrain[i] !== T.WATER) continue;
       this.m.makeTranslation((i % g.size) + 0.5, 0.03, ((i / g.size) | 0) + 0.5);
-      mesh.setMatrixAt(n, this.m);
-    });
-    mesh.count = water.length;
-    mesh.instanceMatrix.needsUpdate = true;
-    this.group.add(mesh);
+      this.waterMesh.setMatrixAt(k++, this.m);
+    }
+    this.waterMesh.count = k;
+    this.waterMesh.instanceMatrix.needsUpdate = true;
   }
 
   /** 잠긴 구획 덮개 16개 */
@@ -285,6 +293,10 @@ export class CityMeshes {
   /** 매 프레임 호출: 변경 플래그가 있으면 인스턴스를 다시 채운다 */
   sync(time: number): void {
     const s = this.state;
+    if (s.dirty.terrain) {
+      s.dirty.terrain = false;
+      this.rebuildWater();
+    }
     if (s.dirty.sections) {
       s.dirty.sections = false;
       this.updateSections();

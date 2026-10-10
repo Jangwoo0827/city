@@ -1,7 +1,8 @@
-import { BRIDGE, COST, REFUND, XP_AWARD } from '../utils/constants';
+import { BRIDGE, COST, REFUND, TERRAIN, XP_AWARD } from '../utils/constants';
+import { recomputeWaterNear } from '../world/terrain';
 import { ZONE_BY_ID } from '../data/zones';
 import { FACILITIES, ROAD_TYPES } from '../data/catalog';
-import { DIRS, Grid, K, Tile, isZoneKind } from '../world/grid';
+import { DIRS, Grid, K, T, Tile, isZoneKind } from '../world/grid';
 import { straightLine } from '../world/roads';
 import { ZONE_KIND, ZONE_NAME, ZoneType, rectTiles } from '../world/zones';
 import { facilityAt, facilityFootprint } from '../world/buildings';
@@ -9,13 +10,19 @@ import { GameState } from './state';
 import { refreshStats } from './simulation';
 import { awardXp, isUnlocked } from './progression';
 
-export type Tool = 'road' | 'zone' | 'facility' | 'demolish' | 'select';
+export type Tool = 'road' | 'zone' | 'facility' | 'terrain' | 'demolish' | 'select';
+
+/** 지형 편집 방식: dig = 물 만들기(강·호수), fill = 땅 메우기 */
+export type TerrainMode = 'dig' | 'fill';
 
 /** 도구 사용 시 선택된 세부 옵션 */
 export interface ToolOptions {
   zone: ZoneType;
   facility: number;
   roadType: number;
+  terrain: TerrainMode;
+  /** 물 파기 브러시 폭(칸) */
+  width: number;
 }
 
 export interface PreviewTile extends Tile {
@@ -141,6 +148,46 @@ function planFacility(s: GameState, facId: number, a: Tile, b: Tile): Plan {
   return { tiles, placeable, costs };
 }
 
+/**
+ * 지형 편집.
+ *  - dig(물 만들기): 드래그한 직선을 폭 width 로 파서 강·호수를 만든다. 빈 땅만 가능.
+ *  - fill(메우기): 드래그한 사각형의 물을 메워 땅으로 만든다. 다리·건물이 없는 빈 물 타일만 가능.
+ */
+function planTerrain(s: GameState, mode: TerrainMode, width: number, a: Tile, b: Tile): Plan {
+  const g = s.grid;
+  const tiles: PreviewTile[] = [];
+  const placeable: Tile[] = [];
+  const costs: number[] = [];
+  const seen = new Set<number>();
+  let area: Tile[];
+  if (mode === 'dig') {
+    const line = straightLine(a, b);
+    const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+    const half = Math.floor(Math.max(1, width) / 2);
+    area = [];
+    for (const t of line) {
+      for (let k = -half; k <= half; k++) area.push(horizontal ? { x: t.x, y: t.y + k } : { x: t.x + k, y: t.y });
+    }
+  } else {
+    area = rectTiles(a, b);
+  }
+  for (const t of area) {
+    if (!g.inBounds(t.x, t.y)) continue;
+    const i = g.idx(t.x, t.y);
+    if (seen.has(i)) continue;
+    seen.add(i);
+    const unlocked = s.isUnlockedAt(t.x, t.y);
+    const empty = g.kind[i] === K.EMPTY;
+    const ok = unlocked && empty && (mode === 'dig' ? g.terrain[i] === T.LAND : g.terrain[i] === T.WATER);
+    tiles.push({ ...t, ok });
+    if (ok) {
+      placeable.push(t);
+      costs.push(mode === 'dig' ? TERRAIN.digCost : TERRAIN.fillCost);
+    }
+  }
+  return { tiles, placeable, costs };
+}
+
 /** 철거: 비용은 음수(= 환급). 시설은 통째로 한 번만 환급한다. */
 function planDemolish(s: GameState, a: Tile, b: Tile): Plan {
   const g = s.grid;
@@ -179,6 +226,8 @@ function makePlan(s: GameState, tool: Tool, o: ToolOptions, a: Tile, b: Tile): P
       return planZone(s, o.zone, a, b);
     case 'facility':
       return planFacility(s, o.facility, a, b);
+    case 'terrain':
+      return planTerrain(s, o.terrain, o.width, a, b);
     case 'demolish':
       return planDemolish(s, a, b);
     default:
@@ -215,6 +264,9 @@ export function previewAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile,
         if (n === 0 && def.needsWater) label += ' (물 타일에 붙여서 설치)';
         break;
       }
+      case 'terrain':
+        label = o.terrain === 'dig' ? (n > 0 ? `물 만들기 ${n}칸` : '물 만들기 (빈 땅에만)') : n > 0 ? `땅 메우기 ${n}칸` : '땅 메우기 (빈 물 타일에만)';
+        break;
       case 'demolish':
         label = n > 0 ? `철거 ${n}칸 · 환급 +₩${(-cost).toLocaleString('ko-KR')}` : '철거';
         break;
@@ -287,6 +339,9 @@ export function applyAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile, b
         xp += XP_AWARD.facility;
         break;
       }
+      case 'terrain':
+        g.terrain[i] = o.terrain === 'dig' ? T.WATER : T.LAND;
+        break;
       case 'demolish':
         demolishTile(g, t.x, t.y);
         break;
@@ -296,6 +351,10 @@ export function applyAction(s: GameState, tool: Tool, o: ToolOptions, a: Tile, b
   }
 
   if (placed > 0) {
+    if (tool === 'terrain') {
+      recomputeWaterNear(g);
+      s.dirty.terrain = true;
+    }
     s.dirty.roads = s.dirty.zones = s.dirty.buildings = s.dirty.net = true;
     refreshStats(s);
     awardXp(s, xp);

@@ -12,7 +12,7 @@ import { ABANDON, HAPPINESS, LEGACY_OFFSET as O, SECTIONS_PER_SIDE } from '../sr
 import { ZONE_BY_KIND } from '../src/data/zones';
 import { sectionIndex } from '../src/world/grid';
 
-const opts = (o: Partial<ToolOptions> = {}): ToolOptions => ({ zone: 'R', facility: FAC.WIND, roadType: 0, ...o });
+const opts = (o: Partial<ToolOptions> = {}): ToolOptions => ({ zone: 'R', facility: FAC.WIND, roadType: 0, terrain: 'dig', width: 3, ...o });
 
 describe('구획(맵 해금)', () => {
   it('시작은 중앙 32×32만 열려 있다', () => {
@@ -80,6 +80,88 @@ describe('도로·구역·시설 규칙', () => {
     applyAction(s, 'road', opts({ roadType: 1 }), T(20, 30), T(20, 30));
     expect(m0 - s.money).toBe(18 - 12);
     expect(s.grid.roadType[s.grid.idx(20 + O, 30 + O)]).toBe(1);
+  });
+});
+
+describe('지형 편집 (강 만들기 / 메우기)', () => {
+  const dig = (width = 3): ToolOptions => opts({ terrain: 'dig', width });
+  const fill = (): ToolOptions => opts({ terrain: 'fill', width: 1 });
+
+  it('직선을 드래그해 폭 3칸 강을 만든다', () => {
+    const s = new GameState();
+    s.money = 100000;
+    const g = s.grid;
+    const a = T(24, 40);
+    const b = T(33, 40);
+    expect(g.isWater(a.x, a.y)).toBe(false);
+    const before = s.money;
+    const r = applyAction(s, 'terrain', dig(3), a, b);
+    expect(r.placed).toBe(10 * 3);
+    expect(before - s.money).toBe(30 * 8);
+    for (let x = a.x; x <= b.x; x++) for (let y = a.y - 1; y <= a.y + 1; y++) expect(g.isWater(x, y)).toBe(true);
+    expect(g.isWater(a.x, a.y + 2)).toBe(false);
+    expect(g.waterNear[g.idx(a.x, a.y + 3)]).toBe(1); // 수변 갱신
+  });
+
+  it('건물·도로가 있는 칸은 파지 않는다', () => {
+    const s = new GameState();
+    s.money = 100000;
+    applyAction(s, 'road', opts(), T(30, 40), T(30, 40));
+    const pv = previewAction(s, 'terrain', dig(1), T(28, 40), T(32, 40));
+    expect(pv.tiles.map((t) => t.ok)).toEqual([true, true, false, true, true]);
+    applyAction(s, 'terrain', dig(1), T(28, 40), T(32, 40));
+    expect(s.grid.isWater(30 + O, 40 + O)).toBe(false);
+  });
+
+  it('잠긴 구획에는 강을 만들 수 없다', () => {
+    const s = new GameState();
+    expect(applyAction(s, 'terrain', dig(1), { x: 4, y: 4 }, { x: 8, y: 4 }).ok).toBe(false);
+  });
+
+  it('물을 메워 땅으로 바꿀 수 있고, 다리가 놓인 칸은 메울 수 없다', () => {
+    const s = new GameState();
+    s.money = 100000;
+    const g = s.grid;
+    // 호수(중심 22,21) 안쪽 칸 메우기
+    expect(g.isWater(...(Object.values(T(22, 21)) as [number, number]))).toBe(true);
+    const r = applyAction(s, 'terrain', fill(), T(21, 21), T(23, 21));
+    expect(r.placed).toBe(3);
+    expect(g.isWater(...(Object.values(T(22, 21)) as [number, number]))).toBe(false);
+    // 다리: 호수를 가로지르는 도로가 있는 칸은 메울 수 없다
+    applyAction(s, 'road', opts(), T(19, 20), T(25, 20));
+    const pv = previewAction(s, 'terrain', fill(), T(20, 20), T(20, 20));
+    expect(pv.tiles[0].ok).toBe(false);
+  });
+
+  it('취수장 옆의 물을 메우면 취수장이 가동하지 못한다', () => {
+    const s = new GameState();
+    buildStarterCity(s);
+    refreshStats(s);
+    expect(s.stats.waterSupply).toBeGreaterThan(0);
+    // 취수장(26,21) 곁 호수 가장자리(25,21)를 메운다 → 주변 물이 남아 있으면 계속 가동
+    applyAction(s, 'terrain', fill(), T(25, 21), T(25, 21));
+    refreshStats(s);
+    // 주변(북·남쪽 등) 물이 남아 있는지는 지형에 따라 다르므로, 취수장 주변 물을 모두 메운다
+    for (let y = 19; y <= 23; y++) applyAction(s, 'terrain', fill(), T(24, y), T(25, y));
+    refreshStats(s);
+    expect(s.stats.waterSupply).toBe(0);
+  });
+
+  it('편집한 지형이 저장·불러오기에서 유지된다', () => {
+    const a = new GameState();
+    a.money = 100000;
+    applyAction(a, 'terrain', dig(1), T(24, 40), T(33, 40));
+    applyAction(a, 'terrain', fill(), T(21, 21), T(23, 21));
+    const data = JSON.parse(JSON.stringify(serializeGame(a)));
+    const b = new GameState();
+    expect(deserializeGame(b, data)).toBe(true);
+    expect(b.grid.terrain).toEqual(a.grid.terrain);
+    expect(b.grid.isWater(24 + O, 40 + O)).toBe(true);
+    expect(b.grid.isWater(22 + O, 21 + O)).toBe(false);
+    // 새 게임은 기본 지형으로 돌아간다
+    b.reset();
+    expect(b.grid.isWater(24 + O, 40 + O)).toBe(false);
+    expect(b.grid.isWater(22 + O, 21 + O)).toBe(true);
   });
 });
 
