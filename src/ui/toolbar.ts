@@ -158,6 +158,17 @@ export function createToolbar(root: HTMLElement, tools: ToolController, state: G
     facBar.appendChild(group);
   }
 
+  // 마우스 휠(세로)로도 시설 목록을 좌우로 스크롤
+  facBar.addEventListener(
+    'wheel',
+    (e) => {
+      if (facBar.scrollWidth <= facBar.clientWidth || Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      facBar.scrollLeft += e.deltaY;
+    },
+    { passive: false },
+  );
+
   const bar = document.createElement('div');
   bar.id = 'toolbar';
   const toolBtns = new Map<Tool, HTMLButtonElement>();

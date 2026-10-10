@@ -957,3 +957,43 @@ kbd {
 #rci {
   gap: 8px;
 }
+
+/* ── 시설 서브바: 한 줄 가로 스크롤 ── */
+.subbar.wide {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* 좌하단 RCI 패널과 겹치지 않도록 양옆을 비운다 */
+  max-width: min(calc(100vw - 290px), 1000px);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
+  overscroll-behavior-x: contain;
+}
+.subbar.wide::-webkit-scrollbar {
+  height: 8px;
+}
+.subbar.wide::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+.subbar.wide::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+.subbar.wide::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+.subbar.wide .fac-group,
+.subbar.wide .sub-btn {
+  flex: 0 0 auto;
+}
+.subbar.wide .sub-btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .subbar.wide {
+    max-width: calc(100vw - 16px);
+  }
+}
