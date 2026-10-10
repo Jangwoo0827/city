@@ -139,18 +139,18 @@ export const FACILITIES: Record<number, FacilityDef> = {
   },
   [FAC.SCHOOL_E]: {
     id: FAC.SCHOOL_E, name: '초등학교', icon: '🏫', category: 'edu1', w: 2, h: 2,
-    cost: 1500, upkeep: 3, capacity: 150, usage: 0.12, needsWater: false, radius: 14, node: 'fac_school_e',
-    desc: '반경 14칸 · 학생 150명 · 교육 1단계 (주민 약 1,250명)',
+    cost: 1500, upkeep: 3, capacity: 2250, usage: 0.12, needsWater: false, radius: 14, node: 'fac_school_e',
+    desc: '반경 14칸 · 학생 2,250명 수용(주민 약 18,750명) · 교육 1단계',
   },
   [FAC.SCHOOL_H]: {
     id: FAC.SCHOOL_H, name: '고등학교', icon: '🏛️', category: 'edu2', w: 3, h: 3,
-    cost: 3500, upkeep: 6, capacity: 250, usage: 0.1, needsWater: false, radius: 20, node: 'fac_school_h',
-    desc: '반경 20칸 · 학생 250명 · 교육 2단계 · 사무·고밀 상업 일자리',
+    cost: 3500, upkeep: 6, capacity: 3750, usage: 0.1, needsWater: false, radius: 20, node: 'fac_school_h',
+    desc: '반경 20칸 · 학생 3,750명 수용(주민 약 37,500명) · 교육 2단계 · 사무·고밀 상업 일자리',
   },
   [FAC.UNIV]: {
     id: FAC.UNIV, name: '대학교', icon: '🎓', category: 'edu3', w: 4, h: 4,
-    cost: 12000, upkeep: 18, capacity: 300, usage: 0.06, needsWater: false, radius: 30, node: 'fac_univ',
-    desc: '반경 30칸 · 학생 300명 · 교육 3단계 · 고급 사무 일자리',
+    cost: 12000, upkeep: 18, capacity: 4500, usage: 0.06, needsWater: false, radius: 30, node: 'fac_univ',
+    desc: '반경 30칸 · 학생 4,500명 수용(주민 약 75,000명) · 교육 3단계 · 고급 사무 일자리',
   },
 };
 

@@ -175,8 +175,10 @@ export class InfoPanel {
         const load = s.serviceLoad.get(g.idx(f.x, f.y));
         row('서비스 반경', `${f.def.radius}칸`);
         if (f.def.capacity > 0) {
-          row('환자 수용', `${f.def.capacity}명`);
-          row('현재 환자', `${Math.round(load?.patients ?? 0)}명 (주민 ${load?.pop ?? 0}명 중)`);
+          // 의료는 환자, 학교는 학생
+          const who = f.def.category === 'health' ? '환자' : '학생';
+          row(`${who} 수용`, `${f.def.capacity.toLocaleString('ko-KR')}명`);
+          row(`현재 ${who}`, `${Math.round(load?.patients ?? 0).toLocaleString('ko-KR')}명 (주민 ${(load?.pop ?? 0).toLocaleString('ko-KR')}명 중)`);
           row('효율', load && load.eff < 1 ? `<span class="no">${Math.round(load.eff * 100)}% (과부하)</span>` : '<span class="ok">100%</span>');
         }
       } else {
